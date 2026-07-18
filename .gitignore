@@ -1,0 +1,35 @@
+# Personal settings and credentials
+var/private.el
+.authinfo
+.authinfo.gpg
+authinfo
+authinfo.gpg
+*.gpg
+
+# Emacs-generated state
+cache/
+elpa/
+eln-cache/
+auto-save-list/
+server/
+tramp
+var/custom.el
+var/.org-id-locations
+var/diary
+.newsrc*
+.gnus.registry*
+bookmarks
+history
+recentf
+places
+projectile-bookmarks.eld
+
+# Backups, auto-save files, and compiled Lisp
+*~
+\#*\#
+.#*
+*.elc
+
+# macOS
+.DS_Store
+
