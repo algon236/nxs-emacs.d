@@ -33,3 +33,6 @@ projectile-bookmarks.eld
 # macOS
 .DS_Store
 
+# Yderligere lokale filer
+games/
+README.org
