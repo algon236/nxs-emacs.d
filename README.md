@@ -1,2 +1,2 @@
 # nxs-emacs.d
-my personal emacs configuration
+Based on emacs-solo
