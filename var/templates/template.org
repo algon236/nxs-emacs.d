@@ -1,0 +1,15 @@
+# -*- mode: org;  lexical-binding: t; coding: utf-8  -*-
+#+TITLE:  Ny File
+#+AUTHOR: Niels Søndergaard
+#+DATE: <2025-08-14 Thu>
+#+EMAIL: niels@algon.dk
+#+LANGUAGE:   da
+#+CATEGORY:   org
+#+DESCRIPTION:
+#+PROPERTIES:
+#+KEYWORDS:
+#+STARTUP:    inlineimages constSI entitiespretty
+#+OPTIONS:    H:3 num:t toc:nil \n:nil @:t e:t ø_Æ::t |:t ^:t -:t f:t *:t <:t
+#+OPTIONS:    tex:t arch:t title:nil  broken-links:mark
+#+INCLUDE:    "/Users/niels/icloud/include/standard.org"
+#+INCLUDE:    "/Users/niels/iCloud/include/headers/NS-hdr.tex" export latex
