@@ -161,7 +161,7 @@ If reset values are nil, nothing is reset."
 ;;NS insert
 (dolist (spec `((top . 50)
                 (left . 200)
-                (width . 280)
+                (width . 200)
                 (height . 70)
                 (user-position . t)
                 (user-size . t)

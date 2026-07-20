@@ -5,7 +5,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 
-(defconst emacs-nxs-sleep-report-version 4
+(defconst emacs-nxs-sleep-report-version 10
   "Projektets heltalsversion.")
 
 (defgroup emacs-nxs-sleep-report nil
@@ -75,17 +75,37 @@
     (format "%s %d" (car month) year)))
 
 (defun emacs-nxs-sleep-report--blank-p (value)
-  (string-empty-p (string-trim (or value ""))))
+  (let ((s (downcase (string-trim (or value "")))))
+    (or (string-empty-p s)
+        (member s '("nan" "na" "n/a" "nil" "-")))))
+
+(defun emacs-nxs-sleep-report--number (value &optional minimum maximum)
+  "Returnér VALUE som tal, eller nil ved ugyldige data.
+Komma accepteres som decimaltegn. MINIMUM og MAXIMUM er valgfrie grænser."
+  (unless (emacs-nxs-sleep-report--blank-p value)
+    (let ((s (replace-regexp-in-string "," "." (string-trim value))))
+      (when (string-match-p "\\`[-+]?[0-9]+\\(?:\\.[0-9]+\\)?\\'" s)
+        (let ((n (string-to-number s)))
+          (when (and (or (null minimum) (>= n minimum))
+                     (or (null maximum) (<= n maximum)))
+            n))))))
+
+(defun emacs-nxs-sleep-report--time-number (value)
+  "Konvertér H:MM til decimale timer, eller returnér nil.
+Timer skal være 0-24, og minutter 0-59."
+  (unless (emacs-nxs-sleep-report--blank-p value)
+    (when (string-match "\\`\\([0-9]+\\):\\([0-9][0-9]\\)\\'"
+                        (string-trim value))
+      (let ((hours (string-to-number (match-string 1 value)))
+            (minutes (string-to-number (match-string 2 value))))
+        (when (and (<= 0 hours 24) (<= 0 minutes 59)
+                   (or (< hours 24) (= minutes 0)))
+          (+ hours (/ minutes 60.0)))))))
 
 (defun emacs-nxs-sleep-report--time-to-hours (value)
-  "Konvertér H:MM til decimale timer."
-  (cond
-   ((emacs-nxs-sleep-report--blank-p value) "")
-   ((string-match "\\`\\([0-9]+\\):\\([0-9][0-9]\\)\\'" value)
-    (format "%.2f"
-            (+ (string-to-number (match-string 1 value))
-               (/ (string-to-number (match-string 2 value)) 60.0))))
-   (t (replace-regexp-in-string "," "." value))))
+  "Konvertér H:MM til tekst med decimale timer, eller tom tekst."
+  (let ((n (emacs-nxs-sleep-report--time-number value)))
+    (if n (format "%.2f" n) "")))
 
 (defun emacs-nxs-sleep-report--latex-escape (text)
   (let ((s (or text "")))
@@ -111,19 +131,26 @@
                    (cdr row))))
    rows))
 
-(defun emacs-nxs-sleep-report--line-plot (rows column header color &optional regression)
-  (let ((data
-         (mapconcat
-          (lambda (row)
-            (format "  %d  %s"
-                    (string-to-number (nth 0 row))
-                    (funcall column row)))
-          rows "\n")))
+(defun emacs-nxs-sleep-report--line-plot
+    (rows column header color minimum maximum &optional regression)
+  "Lav et linjeplot og udelad ugyldige eller urimelige værdier."
+  (let* ((valid
+          (cl-loop for row in rows
+                   for value = (emacs-nxs-sleep-report--number
+                                (funcall column row) minimum maximum)
+                   when value collect
+                   (cons (string-to-number (nth 0 row)) value)))
+         (data
+          (mapconcat
+           (lambda (entry) (format "  %d  %.4f" (car entry) (cdr entry)))
+           valid "\n")))
+    (unless valid
+      (user-error "Ingen gyldige værdier til plottet %s" header))
     (concat
      (format "\\addplot+[color=%s, mark=*, mark options={fill=%s!40}] table[x=dato,y=%s] {\n"
              color color header)
      (format "  dato  %s\n%s\n};\n" header data)
-     (when regression
+     (when (and regression (> (length valid) 1))
        (concat
         (format "\\addplot+[color=%s, dashed, no marks] table[y={create col/linear regression={y=%s}}] {\n"
                 color header)
@@ -173,43 +200,53 @@
      (expand-file-name "plot-pulse.tex" out)
      (concat
       (emacs-nxs-sleep-report--line-plot usable (lambda (r) (nth 1 r))
-                                          "pulsmin" "blue")
+                                          "pulsmin" "blue" 20 250)
       "\n"
       (emacs-nxs-sleep-report--line-plot usable (lambda (r) (nth 2 r))
-                                          "pulsavg" "red" t)))
+                                          "pulsavg" "red" 20 250 t)))
 
     (emacs-nxs-sleep-report--write
      (expand-file-name "plot-oxygen.tex" out)
      (concat
       (emacs-nxs-sleep-report--line-plot usable (lambda (r) (nth 3 r))
-                                          "o2min" "blue")
+                                          "o2min" "blue" 50 100)
       "\n"
       (emacs-nxs-sleep-report--line-plot usable (lambda (r) (nth 4 r))
-                                          "o2avg" "red" t)))
+                                          "o2avg" "red" 50 100 t)))
 
     (emacs-nxs-sleep-report--write
      (expand-file-name "plot-temperature.tex" out)
      (emacs-nxs-sleep-report--line-plot usable (lambda (r) (nth 5 r))
-                                         "temp" "blue" t))
+                                         "temp" "blue" 25 45 t))
 
+    ;; Kun rækker med gyldige tider medtages i søvnplottet.
     ;; Nederste del: faktisk søvn.
     ;; Øverste del: resterende tid i sengen = i-seng minus søvn.
-    (emacs-nxs-sleep-report--write
-     (expand-file-name "plot-sleep.tex" out)
-     (concat
-      (emacs-nxs-sleep-report--bar-plot
-       usable
-       (lambda (r) (emacs-nxs-sleep-report--time-to-hours (nth 7 r)))
-       "soevn" "blue!65" "blue!80!black")
-      "\n"
-      (emacs-nxs-sleep-report--bar-plot
-       usable
-       (lambda (r)
-         (let* ((bed (emacs-nxs-sleep-report--time-to-hours (nth 6 r)))
-                (sleep (emacs-nxs-sleep-report--time-to-hours (nth 7 r)))
-                (rest (- (string-to-number bed) (string-to-number sleep))))
-           (format "%.2f" (max 0 rest))))
-       "rest" "red!60" "red!80!black")))
+    (let ((sleep-rows
+           (cl-remove-if-not
+            (lambda (r)
+              (let ((bed (emacs-nxs-sleep-report--time-number (nth 6 r)))
+                    (sleep (emacs-nxs-sleep-report--time-number (nth 7 r))))
+                (and bed sleep (>= bed sleep))))
+            usable)))
+      (unless sleep-rows
+        (user-error "Ingen gyldige rækker til søvnplottet"))
+      (emacs-nxs-sleep-report--write
+       (expand-file-name "plot-sleep.tex" out)
+       (concat
+        (emacs-nxs-sleep-report--bar-plot
+         sleep-rows
+         (lambda (r)
+           (format "%.2f" (emacs-nxs-sleep-report--time-number (nth 7 r))))
+         "soevn" "blue!65" "blue!80!black")
+        "\n"
+        (emacs-nxs-sleep-report--bar-plot
+         sleep-rows
+         (lambda (r)
+           (let ((bed (emacs-nxs-sleep-report--time-number (nth 6 r)))
+                 (sleep (emacs-nxs-sleep-report--time-number (nth 7 r))))
+             (format "%.2f" (- bed sleep))))
+         "rest" "red!60" "red!80!black"))))
     out))
 
 (defun emacs-nxs-sleep-report--compile (directory)
