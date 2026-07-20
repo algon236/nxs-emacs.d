@@ -21,8 +21,8 @@
   :init
   (setq emacs-nxs-dired-gutter-enabled t)
 
-  (defvar emacs-nxs/dired-git-status-overlays nil
-    "List of active overlays in Dired for Git status.")
+  (defvar-local emacs-nxs/dired-git-status-overlays nil
+    "List of active Git-status overlays in the current Dired buffer.")
 
   (defun emacs-nxs/dired--git-status-face (code)
     "Return a cons cell (STATUS . FACE) for a given Git porcelain CODE."
@@ -79,15 +79,26 @@
           (save-excursion
             (goto-char (point-min))
             (while (not (eobp))
-              (let* ((file (ignore-errors (expand-file-name (dired-get-filename nil t)))))
+              (let* ((relative-file
+                      (ignore-errors (dired-get-filename 'relative t)))
+                     (file
+                      (and relative-file
+                           (not (member relative-file '("." "..")))
+                           (expand-file-name relative-file))))
                 (when file
                   (setq file (if (file-directory-p file) (concat file "/") file))
                   (let* ((status-face (gethash file status-map (cons "  " 'font-lock-keyword-face)))
                          (status (car status-face))
                          (face (cdr status-face))
                          (status-str (propertize (format " %s " status) 'face face))
-                         (ov (make-overlay (line-beginning-position) (1+ (line-beginning-position)))))
+                         ;; Keep the overlay zero-width.  Covering the first
+                         ;; buffer character makes its `before-string'
+                         ;; interact with omitted `.' and `..' entries and can
+                         ;; shift the first visible Dired row to the right.
+                         (bol (line-beginning-position))
+                         (ov (make-overlay bol bol nil t nil)))
                     (overlay-put ov 'before-string status-str)
+                    (overlay-put ov 'emacs-nxs-dired-git-status-overlay t)
                     (push ov emacs-nxs/dired-git-status-overlays))))
               (forward-line 1)))))))
 

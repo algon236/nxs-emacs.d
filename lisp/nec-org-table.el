@@ -5,7 +5,7 @@
 ;; Author: Niels Søndergaard
 
 ;; Package-Requires: ((emacs "29.2"))
-;; found without copyrigth statement on
+;; found without author and copyrigth statement on
 ;; https://emacs.stackexchange.com/questions/42604/org-table-spreadsheet-recalculate-all-tblfm-lines?utm_source=chatgpt.com
 
 ;;; Commentary:

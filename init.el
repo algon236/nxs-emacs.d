@@ -274,7 +274,6 @@ Changes take effect after restarting Emacs."
 
 (defvar emacs-nxs-cache-paths
   '(;; Files:
-    (bookmark-file               . "bookmarks")
     (ielm-history-file-name      . "ielm-history.eld")
     (project-list-file           . "projects")
     (recentf-save-file           . "recentf")
@@ -364,7 +363,7 @@ parent directory created."
   :custom
   (ad-redefinition-action 'accept)
   (auto-save-default t)
-  (bookmark-file (emacs-nxs--cache-path 'bookmark-file))
+  (bookmark-file (locate-user-emacs-file "var/bookmarks"))
   (shared-game-score-directory (emacs-nxs--cache-path 'shared-game-score-directory)) ; FIXME: is this even working?
 ;;  (calendar-latitude 55.9386)                   ;; These are needed
 ;;  (calendar-longitude 12.5053)                  ;; for M-x `sunrise-sunset'
@@ -600,7 +599,7 @@ parent directory created."
                (name  . "^\\*Org Agenda\\*$")))
        ("tramp"   (name   . "^\\*tramp.*"))
        ("emacs"   (or
-               (name  . "^\\*scratch\\*$")
+               (name  . "^\\*\\(?:Start\\|scratch\\)\\*$")
                (name  . "^\\*Messages\\*$")
                (name  . "^\\*Warnings\\*$")
                (name  . "^\\*Shell Command Output\\*$")
@@ -819,23 +818,131 @@ or is an ERC buffer."
   (xterm-mouse-mode 1)
   (file-name-shadow-mode 1) ; allows us to type a new path without having to delete the current one
 
-  (with-current-buffer (get-buffer-create "*scratch*")
-    (erase-buffer)
-    (insert (format ";;
-;; ███████╗███╗   ███╗ █████╗  ██████╗███████╗    ███╗   ██╗██╗  ██╗███████╗
-;; ██╔════╝████╗ ████║██╔══██╗██╔════╝██╔════╝    ████╗  ██║╚██╗██╔╝██╔════╝
-;; █████╗  ██╔████╔██║███████║██║     ███████╗    ██╔██╗ ██║ ╚███╔╝ ███████╗
-;; ██╔══╝  ██║╚██╔╝██║██╔══██║██║     ╚════██║    ██║╚██╗██║ ██╔██╗ ╚════██║
-;; ███████╗██║ ╚═╝ ██║██║  ██║╚██████╗███████║    ██║ ╚████║██╔╝ ██╗███████║
-;; ╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝    ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝
-;;
-;;   Loading time : %s
-;;   Packages     : %s
-;;
-;;
-"
-  (emacs-init-time)
-  (number-to-string (length package-activated-list)))))
+  (require 'bookmark)
+  (require 'button)
+  (require 'seq)
+
+  (defvar emacs-nxs/start-buffer-name "*Start*")
+  (defvar emacs-nxs/start-max-items 10)
+  (defconst emacs-nxs/start-logo
+    '("███████╗███╗   ███╗ █████╗  ██████╗███████╗    ███╗   ██╗██╗  ██╗███████╗"
+      "██╔════╝████╗ ████║██╔══██╗██╔════╝██╔════╝    ████╗  ██║╚██╗██╔╝██╔════╝"
+      "█████╗  ██╔████╔██║███████║██║     ███████╗    ██╔██╗ ██║ ╚███╔╝ ███████╗"
+      "██╔══╝  ██║╚██╔╝██║██╔══██║██║     ╚════██║    ██║╚██╗██║ ██╔██╗ ╚════██║"
+      "███████╗██║ ╚═╝ ██║██║  ██║╚██████╗███████║    ██║ ╚████║██╔╝ ██╗███████║"
+      "╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝    ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝")
+    "Banner shown at the top of the start page.")
+
+  (define-derived-mode emacs-nxs/start-mode special-mode "Start"
+    "Major mode for the Emacs NXS start page."
+    (setq-local truncate-lines t)
+    (setq-local cursor-type nil))
+
+  (defun emacs-nxs/start--bookmark-items ()
+    "Return at most `emacs-nxs/start-max-items' bookmark entries."
+    (bookmark-maybe-load-default-file)
+    (seq-take
+     (seq-remove (lambda (bookmark)
+                   (string= (car bookmark) "org-capture-last-stored"))
+                 bookmark-alist)
+     emacs-nxs/start-max-items))
+
+  (defun emacs-nxs/start--todo-items ()
+    "Return active TODO headings from `org-agenda-files'."
+    (require 'org-agenda)
+    (let (items)
+      (org-map-entries
+       (lambda ()
+         (when (and (< (length items) emacs-nxs/start-max-items)
+                    (org-get-todo-state)
+                    (not (org-entry-is-done-p)))
+           (push (list (org-get-heading t t t t)
+                       (copy-marker (point)))
+                 items)))
+       nil
+       'agenda
+       'archive 'comment)
+      (nreverse items)))
+
+  (defun emacs-nxs/start--open-bookmark (button)
+    "Open the bookmark stored in BUTTON."
+    (bookmark-jump (button-get button 'bookmark-name)))
+
+  (defun emacs-nxs/start--open-todo (button)
+    "Visit the Org heading stored in BUTTON."
+    (let ((marker (button-get button 'org-marker)))
+      (org-goto-marker-or-bmk marker)
+      (org-show-context)))
+
+  (defun emacs-nxs/start--insert-item (label width action property value)
+    "Insert LABEL as a button of WIDTH, using ACTION and PROPERTY VALUE."
+    (let* ((text (truncate-string-to-width label (max 1 (- width 2)) nil nil "…"))
+           (padding (make-string (max 0 (- width 2 (string-width text))) ?\s)))
+      (insert "  ")
+      (insert-text-button (concat text padding)
+                          'follow-link t
+                          'action action
+                          property value)))
+
+  (defun emacs-nxs/start-refresh (&optional _ignore-auto _noconfirm)
+    "Rebuild the Emacs NXS start page."
+    (interactive)
+    (let* ((buffer (get-buffer-create emacs-nxs/start-buffer-name))
+           (window (get-buffer-window buffer t))
+           (available-width (if window (window-body-width window) 100))
+           (column-width (max 24 (min 44 (/ (- available-width 7) 2))))
+           (content-width (+ (* 2 column-width) 3))
+           (left-margin (make-string (max 0 (/ (- available-width content-width) 2)) ?\s))
+           (bookmarks (emacs-nxs/start--bookmark-items))
+           (todos (emacs-nxs/start--todo-items))
+           (rows (max (length bookmarks) (length todos))))
+      (with-current-buffer buffer
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (emacs-nxs/start-mode)
+          (dolist (line emacs-nxs/start-logo)
+            (insert (make-string (max 0 (/ (- available-width (string-width line)) 2)) ?\s)
+                    (propertize line 'face '(:weight bold)) "\n"))
+          (let ((status (format "Loading time: %s    Packages: %s"
+                                (emacs-init-time)
+                                (length package-activated-list))))
+            (insert "\n"
+                    (make-string (max 0 (/ (- available-width (string-width status)) 2)) ?\s)
+                    status "\n\n"))
+          (insert (make-string 10 ?\n))
+          (insert left-margin (propertize "  BOOKMARKS" 'face 'bold))
+          (insert (make-string (max 1 (- column-width 11)) ?\s) "   ")
+          (insert (propertize "  ORG-AGENDA TODO" 'face 'bold) "\n")
+          (dotimes (index rows)
+            (let ((bookmark (nth index bookmarks))
+                  (todo (nth index todos)))
+              (insert left-margin)
+              (if bookmark
+                  (emacs-nxs/start--insert-item
+                   (car bookmark) column-width
+                   #'emacs-nxs/start--open-bookmark 'bookmark-name (car bookmark))
+                (insert (make-string column-width ?\s)))
+              (insert "   ")
+              (if todo
+                  (emacs-nxs/start--insert-item
+                   (car todo) column-width
+                   #'emacs-nxs/start--open-todo 'org-marker (cadr todo))
+                (insert (make-string column-width ?\s)))
+              (insert "\n")))
+          (insert "\n" left-margin
+                  (propertize "  g: opdatér    RET/mus: åbn" 'face 'shadow) "\n")
+          (goto-char (point-min))))
+      buffer))
+
+  (define-key emacs-nxs/start-mode-map (kbd "g") #'emacs-nxs/start-refresh)
+  (defun emacs-nxs/start-window-size-changed (_frame)
+    "Refresh the start page when it is visible after a frame resize."
+    (when (get-buffer-window emacs-nxs/start-buffer-name t)
+      (emacs-nxs/start-refresh)))
+
+  (setq initial-buffer-choice #'emacs-nxs/start-refresh)
+  (add-hook 'window-size-change-functions #'emacs-nxs/start-window-size-changed)
+  (add-hook 'after-init-hook #'emacs-nxs/start-refresh)
 
   (message (emacs-init-time)))
 
@@ -1064,7 +1171,7 @@ If ###@### is found, remove it and place point there at the end."
    ("C-x t g" . #'emacs-nxs/tab-switch-to-group)
    ("C-x t RET" . #'emacs-nxs/tab-select-by-number))
   :custom
-  (tab-bar-new-tab-choice "*scratch*")
+  (tab-bar-new-tab-choice "*Start*")
   (tab-bar-close-button-show nil)
   (tab-bar-new-button-show nil)
   (tab-bar-tab-hints t)
@@ -3845,7 +3952,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 (if nec/measure-time (nec/sstimer "init"))
 (require 'sleep-report)
 (require 'nec-org-table)
-(require 'calendar-danish)
+(require 'danish-calendar)
 
 (if nec/measure-time (nec/stimer "init"))
 ;; -----------------------------------------------------------------------------

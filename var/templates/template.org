@@ -1,15 +1,31 @@
-# -*- mode: org;  lexical-binding: t; coding: utf-8  -*-
-#+TITLE:  Ny File
+# -*- mode: org; lexical-binding: t; coding: utf-8 -*-
+#+TITLE: Ny fil
 #+AUTHOR: Niels Søndergaard
-#+DATE: <2025-08-14 Thu>
+#+DATE: \today
 #+EMAIL: niels@algon.dk
-#+LANGUAGE:   da
-#+CATEGORY:   org
+#+LANGUAGE: da
+#+CATEGORY: org
 #+DESCRIPTION:
-#+PROPERTIES:
 #+KEYWORDS:
-#+STARTUP:    inlineimages constSI entitiespretty
-#+OPTIONS:    H:3 num:t toc:nil \n:nil @:t e:t ø_Æ::t |:t ^:t -:t f:t *:t <:t
-#+OPTIONS:    tex:t arch:t title:nil  broken-links:mark
-#+INCLUDE:    "/Users/niels/icloud/include/standard.org"
-#+INCLUDE:    "/Users/niels/iCloud/include/headers/NS-hdr.tex" export latex
+#+STARTUP: inlineimages constSI entitiespretty
+#+OPTIONS: H:3 num:t toc:nil \n:nil @:t e:t |:t ^:t -:t f:t *:t <:t
+#+OPTIONS: tex:t arch:t title:nil broken-links:mark
+# Fælles basis-preamble
+#+INCLUDE: "/Users/niels/include/org/standard.org"
+# Tabeller får som standard mørkegrønt tabelhoved med hvid tekst og
+# skiftevis hvid/lysegrøn baggrund. Kolonnerne tilpasses den enkelte tabel.
+# En enkelt tabel kan få andre tabularray-valg med en #+ATTR_LATEX: :align-linje.
+#
+# Dokumentets særlige header, hvis den skal bruges
+#+INCLUDE: "/Users/niels/include/headers/NS-hdr.tex" export latex
+# Valgfrie moduler. Fjern "# " foran de moduler, dokumentet behøver.
+# #+INCLUDE: "/Users/niels/include/org/modules/tables.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/code.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/tikz.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/extra-graphics.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/plots.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/index.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/acronyms.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/annotations.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/epigraph.org"
+# #+INCLUDE: "/Users/niels/include/org/modules/testtext.org"
