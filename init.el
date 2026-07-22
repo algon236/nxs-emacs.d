@@ -74,6 +74,12 @@
 
 (setq use-package-always-ensure nil)
 (if nec/measure-time (nec/stimer "init: package"))
+
+;;; Casual — tastaturstyrede menuer for indbyggede Emacs-funktioner
+(use-package casual
+  :ensure t
+  :defer t)
+
 ;;; ┌──────────────────── EMACS NXS CUSTOM OPTIONS
 ;;
 ;;  Some features Emacs NXS provides you can turn on/off
@@ -222,6 +228,14 @@ for ESLint."
 (define-auto-insert
   "\\.org\\'"
   "~/.emacs.d/var/templates/template.org")
+(defun emacs-nxs/org-roam-file-p ()
+  "Return non-nil when the new file belongs to `org-roam-directory'."
+  (and buffer-file-name
+       (file-in-directory-p buffer-file-name
+                            (file-truename "~/org/roam/"))))
+(define-auto-insert
+  '(predicate emacs-nxs/org-roam-file-p)
+  "~/.emacs.d/var/templates/roam.org")
 ;;; ├──────────────────── Apple MacOS
 ;;
 (defvar sys/mac-x-p nil
@@ -825,13 +839,18 @@ or is an ERC buffer."
   (defvar emacs-nxs/start-buffer-name "*Start*")
   (defvar emacs-nxs/start-max-items 10)
   (defconst emacs-nxs/start-logo
-    '("███████╗███╗   ███╗ █████╗  ██████╗███████╗    ███╗   ██╗██╗  ██╗███████╗"
+    '(" "
+      "███████╗███╗   ███╗ █████╗  ██████╗███████╗    ███╗   ██╗██╗  ██╗███████╗"
       "██╔════╝████╗ ████║██╔══██╗██╔════╝██╔════╝    ████╗  ██║╚██╗██╔╝██╔════╝"
       "█████╗  ██╔████╔██║███████║██║     ███████╗    ██╔██╗ ██║ ╚███╔╝ ███████╗"
       "██╔══╝  ██║╚██╔╝██║██╔══██║██║     ╚════██║    ██║╚██╗██║ ██╔██╗ ╚════██║"
       "███████╗██║ ╚═╝ ██║██║  ██║╚██████╗███████║    ██║ ╚████║██╔╝ ██╗███████║"
       "╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝    ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝")
     "Banner shown at the top of the start page.")
+
+  (defconst emacs-nxs/start-image
+    (expand-file-name "images/ringe.png" user-emacs-directory)
+    "Image shown between the banner and the start-page columns.")
 
   (define-derived-mode emacs-nxs/start-mode special-mode "Start"
     "Major mode for the Emacs NXS start page."
@@ -848,21 +867,40 @@ or is an ERC buffer."
      emacs-nxs/start-max-items))
 
   (defun emacs-nxs/start--todo-items ()
-    "Return active TODO headings from `org-agenda-files'."
+    "Return active TODO headings from `org-agenda-files', sorted by date.
+Items without a scheduled time or deadline are placed last."
     (require 'org-agenda)
     (let (items)
       (org-map-entries
        (lambda ()
-         (when (and (< (length items) emacs-nxs/start-max-items)
-                    (org-get-todo-state)
+         (when (and (org-get-todo-state)
                     (not (org-entry-is-done-p)))
-           (push (list (org-get-heading t t t t)
-                       (copy-marker (point)))
-                 items)))
+           (let ((event-time (or (org-get-scheduled-time (point))
+                                 (org-get-deadline-time (point))))
+                 (heading (org-get-heading t t t t)))
+             (push (list (if event-time
+                             (format "%s  %s"
+                                     (format-time-string "%d-%m-%Y" event-time)
+                                     heading)
+                           heading)
+                         (copy-marker (point))
+                         event-time)
+                   items))))
        nil
        'agenda
        'archive 'comment)
-      (nreverse items)))
+      (mapcar (lambda (item) (seq-take item 2))
+              (seq-take
+               (sort items
+                     (lambda (left right)
+                       (let ((left-time (nth 2 left))
+                             (right-time (nth 2 right)))
+                         (cond
+                          ((and left-time right-time)
+                           (time-less-p left-time right-time))
+                          (left-time t)
+                          (t nil)))))
+               emacs-nxs/start-max-items))))
 
   (defun emacs-nxs/start--open-bookmark (button)
     "Open the bookmark stored in BUTTON."
@@ -909,7 +947,18 @@ or is an ERC buffer."
             (insert "\n"
                     (make-string (max 0 (/ (- available-width (string-width status)) 2)) ?\s)
                     status "\n\n"))
-          (insert (make-string 10 ?\n))
+          (let ((image (and (display-images-p)
+                            (file-readable-p emacs-nxs/start-image)
+                            (create-image emacs-nxs/start-image nil nil
+                                          :scale 0.45))))
+            (if image
+                (let ((image-width (ceiling (car (image-size image)))))
+                  (insert "\n"
+                          (make-string
+                           (max 0 (/ (- available-width image-width) 2)) ?\s))
+                  (insert-image image "ringe")
+                  (insert "\n\n"))
+              (insert (make-string 10 ?\n))))
           (insert left-margin (propertize "  BOOKMARKS" 'face 'bold))
           (insert (make-string (max 1 (- column-width 11)) ?\s) "   ")
           (insert (propertize "  ORG-AGENDA TODO" 'face 'bold) "\n")
@@ -935,6 +984,11 @@ or is an ERC buffer."
       buffer))
 
   (define-key emacs-nxs/start-mode-map (kbd "g") #'emacs-nxs/start-refresh)
+  (defun emacs-nxs/start-show ()
+    "Rebuild and display the Emacs NXS start page."
+    (interactive)
+    (switch-to-buffer (emacs-nxs/start-refresh)))
+  (global-set-key (kbd "<f5>") #'emacs-nxs/start-show)
   (defun emacs-nxs/start-window-size-changed (_frame)
     "Refresh the start page when it is visible after a frame resize."
     (when (get-buffer-window emacs-nxs/start-buffer-name t)
@@ -1620,6 +1674,7 @@ away from the bottom.  Counts wrapped lines as real lines."
   :bind
   (("M-i" . emacs-nxs/window-dired-vc-root-left)
    :map dired-mode-map
+   ("C-o" . casual-dired-tmenu)
    ("TAB" . dired-hide-details-mode)
    ("<tab>" . dired-hide-details-mode))
   :custom
@@ -3224,6 +3279,9 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   :ensure nil
   :defer t
   :mode ("\\.org\\'" . org-mode)
+  :bind
+  (:map org-mode-map
+   ("M-m" . casual-org-tmenu))
   :custom
   (org-src-fontify-natively t)
   (org-fontify-quote-and-verse-blocks t)
@@ -3278,8 +3336,9 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   (setq org-ellipsis " ▼ ")
   (set-face-attribute 'org-ellipsis nil :inherit 'default :box nil)
   (setq org-refile-targets '((org-agenda-files :maxlevel . 3)))
-  (setq org-agenda-span 14
-        org-agenda-start-on-weekday 1
+  (setq org-agenda-span 7
+        org-agenda-start-day "-1d"
+        org-agenda-start-on-weekday nil
         org-agenda-show-all-dates t)
   (setq org-capture-templates
       `(("i" "Inbox" entry
@@ -3418,6 +3477,56 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
         (todo   . " %i %-12:c")
         (tags   . " %i %-12:c")
         (search . " %i %-12:c")))
+
+
+;;; │ ORG-ROAM
+(use-package org-roam
+  :ensure t
+  :after org
+  :custom
+  ;; ~/org is a symbolic link to the Org directory in iCloud.
+  (org-roam-directory (file-truename "~/org/roam/"))
+  ;; Keep the rebuildable index together with the org-roam notes.
+  (org-roam-db-location
+   (expand-file-name ".database/org-roam.db" org-roam-directory))
+  (org-roam-dailies-directory "dagligt/")
+  (org-roam-completion-everywhere t)
+  (org-roam-graph-executable "/opt/homebrew/bin/dot")
+  (org-roam-graph-filetype "svg")
+  ;; Display the Graphviz SVG inside Emacs.
+  (org-roam-graph-viewer nil)
+  (org-roam-capture-templates
+   '(("n" "Note" plain "%?"
+      :target
+      (file+head "%<%Y%m%d%H%M%S>-${slug}.org"
+                 "#+title: ${title}\n#+created: %U\n\n")
+      :unnarrowed t)))
+  (org-roam-dailies-capture-templates
+   '(("d" "Daglig note" entry "* %<%H:%M> %?"
+      :target
+      (file+head "%<%Y-%m-%d>.org"
+                 "#+title: %<%d-%m-%Y>\n\n"))))
+  :bind
+  (("C-c n f" . org-roam-node-find)
+   ("C-c n i" . org-roam-node-insert)
+   ("C-c n b" . org-roam-buffer-toggle)
+   ("C-c n c" . org-roam-capture)
+   ("C-c n d" . org-roam-dailies-capture-today)
+   ("C-c n g" . org-roam-graph))
+  :config
+  (org-roam-db-autosync-mode 1))
+
+(use-package org-roam-ui
+  :ensure t
+  :after org-roam
+  :bind
+  (("C-c n u" . org-roam-ui-open))
+  :custom
+  (org-roam-ui-sync-theme t)
+  (org-roam-ui-follow t)
+  (org-roam-ui-update-on-save t)
+  ;; Start the local web server only when C-c n u is used.
+  (org-roam-ui-open-on-start nil))
 
 
 ;;; │ LaTeX
