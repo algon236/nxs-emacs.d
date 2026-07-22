@@ -2,8 +2,12 @@
 
 My personal Emacs configuration.
 
-The configuration is intended for Emacs 30 or later and consists of
+The configuration is intended for Emacs 31 or later and consists of
 `early-init.el`, `init.el`, and smaller modules in `lisp/`.
+
+This configuration is only tried on Apple iMac (M1) and Apple MacBook Air (M2).
+I do not have any Microsoft Windows machines. My linux machines are just runnig
+server (HTTP) and storage. 
 
 ## Installation
 
