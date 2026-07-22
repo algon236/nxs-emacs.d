@@ -1,30 +1,30 @@
 # nxs-emacs.d
 
-Min personlige Emacs-konfiguration.
+My personal Emacs configuration.
 
-Konfigurationen er beregnet til Emacs 30 eller nyere og består af
-`early-init.el`, `init.el` og mindre moduler i `lisp/`.
+The configuration is intended for Emacs 30 or later and consists of
+`early-init.el`, `init.el`, and smaller modules in `lisp/`.
 
 ## Installation
 
-Klon repository'et til en valgfri mappe, og start Emacs med mappen som
-konfigurationsmappe. Eksempel:
+Clone the repository into a folder of your choice, then start Emacs using that
+folder as its configuration directory. For example:
 
 ```sh
 git clone https://github.com/algon236/nxs-emacs.d.git ~/.config/nxs.emacs.d
 emacs --init-directory ~/.config/nxs.emacs.d
 ```
 
-Personlige oplysninger og lokale data hører til i `var/private.el`, som ikke
-versionsstyres. Installerede pakker, cache, historik og andre genererede filer
-er ligeledes udeladt.
+Personal information and local data belong in `var/private.el`, which is not
+version-controlled. Installed packages, cache files, history, and other
+generated files are likewise excluded.
 
-## Baggrund og kreditering
+## Background and attribution
 
-Konfigurationen er videreudviklet fra Rahul Martim Juliatos
-[Emacs Solo](https://github.com/LionyxML/emacs-solo). De oprindelige
-copyright- og licensoplysninger i kildefilerne gælder fortsat.
+The configuration is further developed from Rahul Martim Juliato’s
+[Emacs Solo](https://github.com/LionyxML/emacs-solo). The original copyright
+and licence information in the source files remains applicable.
 
-## Licens
+## Licence
 
-Se [LICENSE](LICENSE).
+See [LICENSE](LICENSE).
