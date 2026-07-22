@@ -1,0 +1,11 @@
+# -*- mode: org; lexical-binding: t; coding: utf-8 -*-
+#+AUTHOR: Niels Søndergaard
+#+DATE: \today
+#+EMAIL: niels@algon.dk
+#+LANGUAGE: da
+#+CATEGORY: org-roam
+#+DESCRIPTION:
+#+KEYWORDS:
+#+STARTUP: inlineimages constSI entitiespretty
+#+OPTIONS: H:3 num:t toc:nil \n:nil @:t e:t |:t ^:t -:t f:t *:t <:t
+#+OPTIONS: tex:t arch:t title:nil broken-links:mark

@@ -7,7 +7,7 @@ The configuration is intended for Emacs 31 or later and consists of
 
 This configuration is only tried on Apple iMac (M1) and Apple MacBook Air (M2).
 I do not have any Microsoft Windows machines. My linux machines are just runnig
-server (HTTP) and storage. 
+server (HTTP) and storage.
 
 ## Installation
 
