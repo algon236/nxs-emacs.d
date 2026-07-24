@@ -6,9 +6,9 @@
 ;; Keywords: config
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
-;;; This is a clone and changed clone from the above
+;;; This is a clone with changes from the above
 ;;  Author: Niels Søndergaard
-;;  URL:
+;;  URL: https://algon.dk
 ;;  Copyright: none
 ;;; Commentary:
 ;;  Init configuration for Emacs NXS
@@ -57,6 +57,7 @@
 ;;
 ;;
 (if nec/measure-time (nec/header "start load time (in 'init.el')"))
+
 (require 'package)
 
 (setq package-archives
@@ -70,15 +71,8 @@
 
 (package-initialize)
 
-(require 'use-package)
-
 (setq use-package-always-ensure nil)
 (if nec/measure-time (nec/stimer "init: package"))
-
-;;; Casual — tastaturstyrede menuer for indbyggede Emacs-funktioner
-(use-package casual
-  :ensure t
-  :defer t)
 
 ;;; ┌──────────────────── EMACS NXS CUSTOM OPTIONS
 ;;
@@ -379,9 +373,9 @@ parent directory created."
   (auto-save-default t)
   (bookmark-file (locate-user-emacs-file "var/bookmarks"))
   (shared-game-score-directory (emacs-nxs--cache-path 'shared-game-score-directory)) ; FIXME: is this even working?
-;;  (calendar-latitude 55.9386)                   ;; These are needed
-;;  (calendar-longitude 12.5053)                  ;; for M-x `sunrise-sunset'
-;;  (calendar-location-name "Nivå, Denmark")
+  (calendar-latitude 55.9386)                   ;; These are needed
+  (calendar-longitude 12.5053)                  ;; for M-x `sunrise-sunset'
+  (calendar-location-name "Nivå, Denmark")
   (column-number-mode t)
   (line-number-mode t)
   (line-spacing nil)
@@ -716,41 +710,7 @@ parent directory created."
 
 ;;; registers.el ends here
 
-;;NS ;; EMACS-31 Remove this, since new emacs will come with 'e' for editing xref buffers.
-;;NS ;; Reference: https://debbugs.gnu.org/cgi/bugreport.cgi?bug=80616
-;;NS ;;
-;;NS ;; Makes any xref buffer "exportable" to a grep buffer with "E" so you can edit it with "e".
-;;NS (defun emacs-nxs/xref-to-grep-compilation ()
-;;NS   "Export the current Xref results to a grep-like buffer (Emacs 30+)."
-;;NS   (interactive)
-;;NS   (unless (derived-mode-p 'xref--xref-buffer-mode)
-;;NS     (user-error "Not in an Xref buffer"))
-;;NS
-;;NS    (let* ((items (and (boundp 'xref--fetcher)
-;;NS               (funcall xref--fetcher)))
-;;NS       (buf-name "*xref→grep*")
-;;NS       (grep-buf (get-buffer-create buf-name)))
-;;NS      (unless items
-;;NS    (user-error "No xref items found"))
-;;NS
-;;NS      (with-current-buffer grep-buf
-;;NS    (let ((inhibit-read-only t))
-;;NS      (erase-buffer)
-;;NS      (insert (format "-*- mode: grep; default-directory: %S -*-\n\n"
-;;NS              default-directory))
-;;NS      (dolist (item items)
-;;NS        (let* ((loc (xref-item-location item))
-;;NS           (file (xref-file-location-file loc))
-;;NS           (line (xref-file-location-line loc))
-;;NS           (summary (xref-item-summary item)))
-;;NS          (insert (format "%s:%d:%s\n" file line summary)))))
-;;NS    (grep-mode))
-;;NS      (pop-to-buffer grep-buf)))
-;;NS  (with-eval-after-load 'xref
-;;NS    (define-key xref--xref-buffer-mode-map (kbd "E")
-;;NS        #'emacs-nxs/xref-to-grep-compilation))
-
-  ;; ELISP evaluations show results in an overlay
+;; ELISP evaluations show results in an overlay
   (defun emacs-nxs/eval-last-sexp-overlay (arg)
     "Eval last sexp and show result inline as overlay.
 With prefix ARG, insert the result inline instead.
@@ -838,8 +798,13 @@ or is an ERC buffer."
 
   (defvar emacs-nxs/start-buffer-name "*Start*")
   (defvar emacs-nxs/start-max-items 10)
+  (defconst emacs-nxs/start-image
+    (expand-file-name "images/ringe.png" user-emacs-directory)
+    "Image shown above the banner on the start page.")
+
   (defconst emacs-nxs/start-logo
     '(" "
+      " "
       "███████╗███╗   ███╗ █████╗  ██████╗███████╗    ███╗   ██╗██╗  ██╗███████╗"
       "██╔════╝████╗ ████║██╔══██╗██╔════╝██╔════╝    ████╗  ██║╚██╗██╔╝██╔════╝"
       "█████╗  ██╔████╔██║███████║██║     ███████╗    ██╔██╗ ██║ ╚███╔╝ ███████╗"
@@ -848,9 +813,6 @@ or is an ERC buffer."
       "╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚══════╝    ╚═╝  ╚═══╝╚═╝  ╚═╝╚══════╝")
     "Banner shown at the top of the start page.")
 
-  (defconst emacs-nxs/start-image
-    (expand-file-name "images/ringe.png" user-emacs-directory)
-    "Image shown between the banner and the start-page columns.")
 
   (define-derived-mode emacs-nxs/start-mode special-mode "Start"
     "Major mode for the Emacs NXS start page."
@@ -922,43 +884,100 @@ Items without a scheduled time or deadline are placed last."
                           'action action
                           property value)))
 
+  (defun emacs-nxs/start--visible-buffer-count ()
+    "Return the number of distinct buffers visible in live frames."
+    (let (buffers)
+      (dolist (frame (frame-list))
+        (dolist (window (window-list frame 'no-minibuffer))
+          (push (window-buffer window) buffers)))
+      (length (delete-dups buffers))))
+
+  (defun emacs-nxs/start--system-information ()
+    "Return dynamic system-information lines for the start page."
+    (let* ((attributes (process-attributes (emacs-pid)))
+           (rss-kb (or (alist-get 'rss attributes) 0))
+           (cpu-seconds
+            (float-time (or (alist-get 'time attributes) '(0 0 0 0))))
+           (visible-buffers (emacs-nxs/start--visible-buffer-count))
+           (total-buffers (length (buffer-list)))
+           (now (current-time))
+           (danish-weekdays
+            ["søndag" "mandag" "tirsdag" "onsdag"
+             "torsdag" "fredag" "lørdag"])
+           (danish-months
+            ["januar" "februar" "marts" "april" "maj" "juni"
+             "juli" "august" "september" "oktober" "november" "december"])
+           (weekday
+            (aref danish-weekdays
+                  (string-to-number (format-time-string "%w" now))))
+           (day (string-to-number (format-time-string "%d" now)))
+           (month
+            (aref danish-months
+                  (1- (string-to-number (format-time-string "%m" now))))))
+      (list
+       (format "⚙  Emacs PID: %s  |  Uptime: %s"
+               (emacs-pid) (emacs-uptime))
+       (format "💾 Memory: %.1f MB  |  CPU Time: %.1f s"
+               (/ rss-kb 1024.0) cpu-seconds)
+       (format "📦 Packages: %s  |  Buffers: %s/%s total"
+               (length package-activated-list)
+               visible-buffers total-buffers)
+       (format "🏷️  Version: %s  |  Platform: %s"
+               emacs-version system-type)
+       (format "🕘 Time: kl. %s, %s %s. %s %s"
+               (format-time-string "%H:%M:%S" now)
+               weekday day month (format-time-string "%Y" now)))))
+
   (defun emacs-nxs/start-refresh (&optional _ignore-auto _noconfirm)
     "Rebuild the Emacs NXS start page."
     (interactive)
     (let* ((buffer (get-buffer-create emacs-nxs/start-buffer-name))
            (window (get-buffer-window buffer t))
            (available-width (if window (window-body-width window) 100))
+           (available-height
+            (window-body-height (or window (selected-window))))
            (column-width (max 24 (min 44 (/ (- available-width 7) 2))))
            (content-width (+ (* 2 column-width) 3))
            (left-margin (make-string (max 0 (/ (- available-width content-width) 2)) ?\s))
            (bookmarks (emacs-nxs/start--bookmark-items))
            (todos (emacs-nxs/start--todo-items))
-           (rows (max (length bookmarks) (length todos))))
+           (rows (max (length bookmarks) (length todos)))
+           (system-information (emacs-nxs/start--system-information))
+           (system-information-width
+            (apply #'max
+                   (mapcar #'string-width
+                           (cons "System Information:" system-information))))
+           (system-information-margin
+            (make-string
+             (max 0 (/ (- available-width system-information-width) 2))
+             ?\s))
+           (image-extra-lines 0))
       (with-current-buffer buffer
         (let ((inhibit-read-only t))
           (erase-buffer)
           (emacs-nxs/start-mode)
-          (dolist (line emacs-nxs/start-logo)
-            (insert (make-string (max 0 (/ (- available-width (string-width line)) 2)) ?\s)
-                    (propertize line 'face '(:weight bold)) "\n"))
-          (let ((status (format "Loading time: %s    Packages: %s"
-                                (emacs-init-time)
-                                (length package-activated-list))))
-            (insert "\n"
-                    (make-string (max 0 (/ (- available-width (string-width status)) 2)) ?\s)
-                    status "\n\n"))
           (let ((image (and (display-images-p)
                             (file-readable-p emacs-nxs/start-image)
                             (create-image emacs-nxs/start-image nil nil
                                           :scale 0.45))))
             (if image
-                (let ((image-width (ceiling (car (image-size image)))))
+                (let* ((image-size-chars (image-size image))
+                       (image-width (ceiling (car image-size-chars)))
+                       (image-height (ceiling (cdr image-size-chars))))
+                  ;; The image occupies one logical buffer line, but several
+                  ;; visual screen lines.  Account for the additional height
+                  ;; when anchoring system information near the window bottom.
+                  (setq image-extra-lines (max 0 (1- image-height)))
                   (insert "\n"
                           (make-string
                            (max 0 (/ (- available-width image-width) 2)) ?\s))
                   (insert-image image "ringe")
                   (insert "\n\n"))
               (insert (make-string 10 ?\n))))
+          (dolist (line emacs-nxs/start-logo)
+            (insert (make-string (max 0 (/ (- available-width (string-width line)) 2)) ?\s)
+                    (propertize line 'face '(:weight bold)) "\n"))
+          (insert "\n\n")
           (insert left-margin (propertize "  BOOKMARKS" 'face 'bold))
           (insert (make-string (max 1 (- column-width 11)) ?\s) "   ")
           (insert (propertize "  ORG-AGENDA TODO" 'face 'bold) "\n")
@@ -980,6 +999,20 @@ Items without a scheduled time or deadline are placed last."
               (insert "\n")))
           (insert "\n" left-margin
                   (propertize "  g: opdatér    RET/mus: åbn" 'face 'shadow) "\n")
+          (let ((blank-lines
+                 (max 1
+                      (- available-height
+                         (line-number-at-pos)
+                         (length system-information)
+                         image-extra-lines
+                         2))))
+            (insert (make-string blank-lines ?\n)))
+          (insert system-information-margin
+                  (propertize "System Information:" 'face 'font-lock-keyword-face)
+                  "\n")
+          (dolist (line system-information)
+            (insert system-information-margin line "\n"))
+          (insert "\n\n")
           (goto-char (point-min))))
       buffer))
 
@@ -1319,74 +1352,6 @@ Uses position instead of index field."
 ;;        certfp
 ;;        ,(expand-file-name "cert.pem" user-emacs-directory)
 ;;        ,(expand-file-name "cert.pem" user-emacs-directory)))))
-;;
-
-;;; │ ERC
-;; (use-package erc
-;;   :ensure nil
-;;   :defer t
-;;   :custom
-;;   (erc-join-buffer 'window)
-;;   (erc-hide-list '("JOIN" "PART" "QUIT"))
-;;   (erc-timestamp-format "[%H:%M]")
-;;   (erc-autojoin-channels-alist '((".*\\.libera\\.chat" "#emacs" "#systemcrafters")))
-;;   (erc-server-reconnect-attempts 10)
-;;   (erc-server-reconnect-timeout 3)
-;;   (erc-fill-function 'erc-fill-wrap)
-;;   (erc-log-channels-directory (emacs-nxs--cache-path 'erc-log-channels-directory))
-;;   (erc-log-insert-log-on-open 'erc-log-new-target-buffer-p) ;; EMACS-31 and or needs https://debbugs.gnu.org/cgi/bugreport.cgi?bug=79665 patch
-;;   (erc-save-buffer-on-part t)
-;;   (erc-save-queries-on-quit t)
-;;   (erc-log-write-after-send t)
-;;   (erc-log-write-after-insert t)
-;;   (erc-spelling-dictionaries '(("Libera.Chat" "en_US")))
-;;   :config
-;;   (defun emacs-nxs/erc-get-color-for-nick (nick)
-;;     "Return a Catppuccin Mocha Like color string for NICK based on its hash."
-;;     (let* ((colors '("#f38ba8" "#a6e3a1" "#f9e2af" "#89b4fa"
-;;              "#cba6f7" "#fab387" "#b4befe" "#eba0ac"
-;;              "#f5c2e7"))
-;;        (hash (mod (abs (sxhash nick)) (length colors))))
-;;       (nth hash colors)))
-;;
-;;   (defun emacs-nxs/erc-colorize-nick ()
-;;     "Colorize nicknames in ERC buffer."
-;;     (save-excursion
-;;       (goto-char (point-min))
-;;       (while (re-search-forward "\\(<\\)\\([^ >]+\\)\\(>\\)" nil t)
-;;     (let* ((nick (match-string 2))
-;;            (color (emacs-nxs/erc-get-color-for-nick nick)))
-;;       (put-text-property (match-beginning 2) (match-end 2)
-;;                  'face `(:foreground ,color :weight bold))))))
-;;   (add-hook 'erc-insert-modify-hook #'emacs-nxs/erc-colorize-nick)
-;;
-;;   (add-to-list 'erc-modules 'log)
-;;   (erc-spelling-mode 1)
-;;   :init
-;;   (with-eval-after-load 'erc
-;;
-;;     ;; EMACS-31 (no more dependency between scrolltobottom and erc-fill-wrap THX!!!)
-;;     (when (< emacs-major-version 31)
-;;       (add-to-list 'erc-modules 'scrolltobottom)))
-;;
-;;   (setopt erc-sasl-mechanism 'external)
-;;
-;;   (defun erc-liberachat ()
-;;     (interactive)
-;;
-;;     (with-eval-after-load 'erc
-;;       (add-to-list 'erc-modules 'sasl))
-;;
-;;     (let ((buf (erc-tls :server "irc.libera.chat"
-;;             :port 6697
-;;             :user "niels"
-;;             :password ""
-;;             :client-certificate
-;;             (list
-;;              (expand-file-name "cert.pem" user-emacs-directory)
-;;              (expand-file-name "cert.pem" user-emacs-directory)))))
-;;       (when (bufferp buf)
-;;     (pop-to-buffer buf)))))
 ;;
 
 ;;; │ ICOMPLETE
@@ -2269,6 +2234,29 @@ For the current icon style."
       "jqp")))
 
 
+;;; ┌──────────────────── CASUAL
+;;; Casual — tastaturstyrede menuer for indbyggede Emacs-funktioner
+ (use-package casual
+   :ensure t
+   :defer t)
+
+;;; Casual-menutaster holdes lokale for hver tilstand, så de ikke ændrer
+;;; almindelige globale Emacs-taster.
+(with-eval-after-load 'org-agenda
+  (keymap-set org-agenda-mode-map "C-o" #'casual-agenda-tmenu))
+
+(with-eval-after-load 'info
+  (keymap-set Info-mode-map "C-o" #'casual-info-tmenu))
+
+(with-eval-after-load 'calc
+  (keymap-set calc-mode-map "C-o" #'casual-calc-tmenu))
+
+(with-eval-after-load 'calc-alg
+  (keymap-set calc-alg-map "C-o" #'casual-calc-tmenu))
+
+(with-eval-after-load 'bookmark
+  (keymap-set bookmark-bmenu-mode-map "C-o" #'casual-bookmarks-tmenu))
+
 ;;; │ ISEARCH
 (use-package isearch
   :ensure nil
@@ -2288,7 +2276,8 @@ For the current icon style."
 
   ;; Bind `M-w` in isearch to copy the selected word, so M-s M-. M-w
   ;; does a great job of 'copying the current word under cursor'.
-  (define-key isearch-mode-map (kbd "M-w") 'isearch-copy-selected-word))
+  (define-key isearch-mode-map (kbd "M-w") 'isearch-copy-selected-word)
+  (keymap-set isearch-mode-map "C-o" #'casual-isearch-tmenu))
 
 
 ;;; │ VC
@@ -2709,16 +2698,13 @@ and restart Flymake to apply the changes."
 ;;; │ FLYSPELL
 (use-package flyspell
   :ensure nil
-  :defer t
+  :demand t
+  :hook
+  ((text-mode-hook . flyspell-mode)
+   (prog-mode-hook . flyspell-prog-mode))
   :config
-  (setq ispell-program-name "aspell")
-;;  (setq ispell-dictionary "en_US")
-  (setq ispell-dictionary "da_DK")       ;;NS for Denmark
-  (ispell-set-spellchecker-params)
-  ;; :hook
-  ;; ((text-mode-hook . flyspell-mode)
-  ;;  (prog-mode-hook . flyspell-prog-mode))
-  )
+  (setq ispell-dictionary "da")
+  (ispell-set-spellchecker-params))
 
 
 ;;; │ WHITESPACE
@@ -3539,6 +3525,7 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   (require 'font-latex nil t)
   (require 'reftex nil t)
   (add-hook 'latex-mode-hook #'turn-on-reftex)
+  (add-hook 'LaTeX-mode-hook #'turn-on-reftex)
   (setq-default TeX-engine 'luatex
                 TeX-master nil
                 TeX-command-extra-options "--shell-escape")
@@ -3567,7 +3554,27 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
 
 (use-package reftex
   :ensure nil
-  :defer t)
+  :defer t
+  :hook
+  ((latex-mode-hook . turn-on-reftex)
+   (LaTeX-mode-hook . turn-on-reftex))
+  :bind
+  (:map reftex-mode-map
+   ("C-c )" . reftex-citation)
+   ("C-c (" . reftex-label)
+   ("C-c =" . reftex-toc)
+   ("C-c &" . reftex-view-crossref))
+  :custom
+  (reftex-plug-into-AUCTeX t)
+  (reftex-enable-partial-scans t)
+  (reftex-save-parse-info t)
+  (reftex-use-multiple-selection-buffers t)
+  (reftex-default-bibliography '("~/org/reftex/references.bib"))
+  (reftex-cite-prompt-optional-args nil)
+  (reftex-cite-format 'default)
+  :config
+  (with-eval-after-load 'org
+    (keymap-set org-mode-map "C-c )" #'org-reftex-citation)))
 
 (use-package pdf-tools
   :ensure t
