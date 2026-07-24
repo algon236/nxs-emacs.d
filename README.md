@@ -1,4 +1,5 @@
 # nxs-emacs.d
+![Emacs NXS start page](images/Start.png)
 
 My personal Emacs configuration.
 
