@@ -299,7 +299,6 @@ Changes take effect after restarting Emacs."
     (shared-game-score-directory . "games/")
     (multisession-directory      . "multisession/")
     (url-configuration-directory . "url/")
-    (rcirc-log-directory         . "rcirc/logs/")
     (erc-log-channels-directory  . "erc/logs/")
     (erc-image-cache-directory   . "erc/images/")
     (image-dired-dir             . "image-dired/")
@@ -582,7 +581,6 @@ parent directory created."
   ;; Starts `completion-preview-mode' automatically in some modes
   (add-hook 'prog-mode-hook #'completion-preview-mode)
   (add-hook 'text-mode-hook #'completion-preview-mode)
-  (add-hook 'rcirc-mode-hook #'completion-preview-mode)
   (add-hook 'erc-mode-hook #'completion-preview-mode)
 
   ;; A Protesilaos life savier HACK
@@ -633,9 +631,7 @@ parent directory created."
                (name  . "^\\*Article\\*")
                (name  . "^\\*BBDB\\*")))
        ("chat"    (or
-               (mode  . rcirc-mode)
                (mode  . erc-mode)
-               (name  . "^\\*rcirc.*")
                (name  . "^\\*ERC.*"))))))
 
   (add-hook 'ibuffer-mode-hook
@@ -798,6 +794,15 @@ or is an ERC buffer."
 
   (defvar emacs-nxs/start-buffer-name "*Start*")
   (defvar emacs-nxs/start-max-items 10)
+  (defcustom emacs-nxs/start-perinf-project-directory
+    (expand-file-name "~/org/PerInf/")
+    "Personal Information System project shown on the start page."
+    :type 'directory
+    :group 'emacs)
+  (defcustom emacs-nxs/start-perinf-horizon-days 30
+    "Number of future days shown for PerInf objects on the start page."
+    :type 'integer
+    :group 'emacs)
   (defconst emacs-nxs/start-image
     (expand-file-name "images/ringe.png" user-emacs-directory)
     "Image shown above the banner on the start page.")
@@ -828,51 +833,85 @@ or is an ERC buffer."
                  bookmark-alist)
      emacs-nxs/start-max-items))
 
-  (defun emacs-nxs/start--todo-items ()
-    "Return active TODO headings from `org-agenda-files', sorted by date.
-Items without a scheduled time or deadline are placed last."
-    (require 'org-agenda)
-    (let (items)
-      (org-map-entries
-       (lambda ()
-         (when (and (org-get-todo-state)
-                    (not (org-entry-is-done-p)))
-           (let ((event-time (or (org-get-scheduled-time (point))
-                                 (org-get-deadline-time (point))))
-                 (heading (org-get-heading t t t t)))
-             (push (list (if event-time
-                             (format "%s  %s"
-                                     (format-time-string "%d-%m-%Y" event-time)
-                                     heading)
-                           heading)
-                         (copy-marker (point))
-                         event-time)
-                   items))))
-       nil
-       'agenda
-       'archive 'comment)
-      (mapcar (lambda (item) (seq-take item 2))
-              (seq-take
-               (sort items
-                     (lambda (left right)
-                       (let ((left-time (nth 2 left))
-                             (right-time (nth 2 right)))
-                         (cond
-                          ((and left-time right-time)
-                           (time-less-p left-time right-time))
-                          (left-time t)
-                          (t nil)))))
-               emacs-nxs/start-max-items))))
+  (defun emacs-nxs/start--perinf-time (value)
+    "Return Emacs time parsed from PerInf date or datetime VALUE."
+    (when (and value (not (string-empty-p value)))
+      (ignore-errors (date-to-time value))))
+
+  (defun emacs-nxs/start--perinf-within-horizon-p (event-time)
+    "Return non-nil when EVENT-TIME is not beyond the dashboard horizon.
+Objects without a date and objects in the past remain visible."
+    (or (not event-time)
+        (not
+         (time-less-p
+          (time-add
+           (current-time)
+           (days-to-time emacs-nxs/start-perinf-horizon-days))
+          event-time))))
+
+  (defun emacs-nxs/start--perinf-items ()
+    "Return active PerInf tasks and meetings, sorted by date.
+Tasks without a deadline are placed after dated objects."
+    (require 'perinf)
+    (let ((project
+           (file-name-as-directory
+            (expand-file-name emacs-nxs/start-perinf-project-directory)))
+          items)
+      (when (perinf-project-p project)
+        (dolist (task (perinf-storage-list 'task project))
+          (unless (memq (perinf-object-status task) '(completed cancelled))
+            (let* ((deadline
+                    (alist-get 'DEADLINE
+                               (perinf-object-properties task)))
+                   (event-time (emacs-nxs/start--perinf-time deadline)))
+              (when (emacs-nxs/start--perinf-within-horizon-p event-time)
+                (push
+                 (list
+                  (if event-time
+                      (format "%s  Opgave: %s"
+                              (format-time-string "%d-%m-%Y" event-time)
+                              (perinf-object-title task))
+                    (format "Opgave: %s" (perinf-object-title task)))
+                  task event-time)
+                 items)))))
+        (dolist (meeting (perinf-storage-list 'meeting project))
+          (when (memq (perinf-object-status meeting) '(planned in-progress))
+            (let* ((start-at
+                    (alist-get 'START_AT
+                               (perinf-object-properties meeting)))
+                   (event-time (emacs-nxs/start--perinf-time start-at)))
+              (when (emacs-nxs/start--perinf-within-horizon-p event-time)
+                (push
+                 (list
+                  (if event-time
+                      (format "%s  Møde: %s"
+                              (format-time-string "%d-%m-%Y" event-time)
+                              (perinf-object-title meeting))
+                    (format "Møde: %s" (perinf-object-title meeting)))
+                  meeting event-time)
+                 items))))))
+      (mapcar
+       (lambda (item) (seq-take item 2))
+       (seq-take
+        (sort
+         items
+         (lambda (left right)
+           (let ((left-time (nth 2 left))
+                 (right-time (nth 2 right)))
+             (cond
+              ((and left-time right-time)
+               (time-less-p left-time right-time))
+              (left-time t)
+              (t nil)))))
+        emacs-nxs/start-max-items))))
 
   (defun emacs-nxs/start--open-bookmark (button)
     "Open the bookmark stored in BUTTON."
     (bookmark-jump (button-get button 'bookmark-name)))
 
-  (defun emacs-nxs/start--open-todo (button)
-    "Visit the Org heading stored in BUTTON."
-    (let ((marker (button-get button 'org-marker)))
-      (org-goto-marker-or-bmk marker)
-      (org-show-context)))
+  (defun emacs-nxs/start--open-perinf-object (button)
+    "Open the PerInf object stored in BUTTON."
+    (perinf-core-show-object (button-get button 'perinf-object)))
 
   (defun emacs-nxs/start--insert-item (label width action property value)
     "Insert LABEL as a button of WIDTH, using ACTION and PROPERTY VALUE."
@@ -915,16 +954,16 @@ Items without a scheduled time or deadline are placed last."
             (aref danish-months
                   (1- (string-to-number (format-time-string "%m" now))))))
       (list
-       (format "⚙  Emacs PID: %s  |  Uptime: %s"
+       (format "⚙   Emacs PID:  %s     |  Oppetid: %s"
                (emacs-pid) (emacs-uptime))
-       (format "💾 Memory: %.1f MB  |  CPU Time: %.1f s"
+       (format "💾  Hukommelse: %.1f MB  |  CPU Time: %.1f s"
                (/ rss-kb 1024.0) cpu-seconds)
-       (format "📦 Packages: %s  |  Buffers: %s/%s total"
+       (format "📦  Pakker:     %s        |  Buffere: %s/%s total"
                (length package-activated-list)
                visible-buffers total-buffers)
-       (format "🏷️  Version: %s  |  Platform: %s"
+       (format "🏷️  Version:   %s    |  Platform: %s"
                emacs-version system-type)
-       (format "🕘 Time: kl. %s, %s %s. %s %s"
+       (format "🕘  Tid:    kl. %s, %s %s. %s %s"
                (format-time-string "%H:%M:%S" now)
                weekday day month (format-time-string "%Y" now)))))
 
@@ -940,8 +979,8 @@ Items without a scheduled time or deadline are placed last."
            (content-width (+ (* 2 column-width) 3))
            (left-margin (make-string (max 0 (/ (- available-width content-width) 2)) ?\s))
            (bookmarks (emacs-nxs/start--bookmark-items))
-           (todos (emacs-nxs/start--todo-items))
-           (rows (max (length bookmarks) (length todos)))
+           (perinf-items (emacs-nxs/start--perinf-items))
+           (rows (max (length bookmarks) (length perinf-items)))
            (system-information (emacs-nxs/start--system-information))
            (system-information-width
             (apply #'max
@@ -980,10 +1019,10 @@ Items without a scheduled time or deadline are placed last."
           (insert "\n\n")
           (insert left-margin (propertize "  BOOKMARKS" 'face 'bold))
           (insert (make-string (max 1 (- column-width 11)) ?\s) "   ")
-          (insert (propertize "  ORG-AGENDA TODO" 'face 'bold) "\n")
+          (insert (propertize "  PERSONAL INFORMATION SYSTEM" 'face 'bold) "\n")
           (dotimes (index rows)
             (let ((bookmark (nth index bookmarks))
-                  (todo (nth index todos)))
+                  (perinf-item (nth index perinf-items)))
               (insert left-margin)
               (if bookmark
                   (emacs-nxs/start--insert-item
@@ -991,10 +1030,11 @@ Items without a scheduled time or deadline are placed last."
                    #'emacs-nxs/start--open-bookmark 'bookmark-name (car bookmark))
                 (insert (make-string column-width ?\s)))
               (insert "   ")
-              (if todo
+              (if perinf-item
                   (emacs-nxs/start--insert-item
-                   (car todo) column-width
-                   #'emacs-nxs/start--open-todo 'org-marker (cadr todo))
+                   (car perinf-item) column-width
+                   #'emacs-nxs/start--open-perinf-object
+                   'perinf-object (cadr perinf-item))
                 (insert (make-string column-width ?\s)))
               (insert "\n")))
           (insert "\n" left-margin
@@ -1329,31 +1369,6 @@ Uses position instead of index field."
   (tab-bar-history-mode 1))
 
 
-;;; │ RCIRC
-;; (use-package rcirc
-;;   :ensure nil
-;;   :custom
-;;   (rcirc-debug t)
-;;   (rcirc-default-nick "Lionyx")
-;;   (rcirc-default-user-name "Lionyx")
-;;   (rcirc-log-directory (emacs-nxs--cache-path 'rcirc-log-directory))
-;;   (rcirc-default-full-name "Lionyx")
-;;   (rcirc-server-alist
-;;    '(("irc.libera.chat"
-;;       :port 6697
-;;       :encryption tls
-;;       :channels ("#emacs" "#systemcrafters"))))
-;;   (rcirc-reconnect-delay 5)
-;;   (rcirc-fill-column 100)
-;;   (rcirc-track-ignore-server-buffer-flag t)
-;;   :config
-;;   (setq rcirc-authinfo
-;;     `(("irc.libera.chat"
-;;        certfp
-;;        ,(expand-file-name "cert.pem" user-emacs-directory)
-;;        ,(expand-file-name "cert.pem" user-emacs-directory)))))
-;;
-
 ;;; │ ICOMPLETE
 (use-package icomplete
   :bind (:map icomplete-minibuffer-map
@@ -1631,7 +1646,12 @@ away from the bottom.  Counts wrapped lines as real lines."
 
 (use-package nerd-icons-dired
   :after (nerd-icons dired)
-  :hook (dired-mode . nerd-icons-dired-mode))
+  :hook (dired-mode . nerd-icons-dired-mode)
+  :config
+  (setq minor-mode-alist
+        (assq-delete-all 'nerd-icons-dired-mode minor-mode-alist))
+  (push '(nerd-icons-dired-mode " Nerd-Icons")
+        minor-mode-alist))
 
 ;;; │ DIRED
 (use-package dired
@@ -4019,6 +4039,8 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 ;;  │ Each file is loaded here via `require'.
 ;;  │ See `lisp/*.el' for per-module documentation.
 (add-to-list 'load-path (expand-file-name "lisp/" user-emacs-directory))
+(add-to-list 'load-path (expand-file-name "perinf/" user-emacs-directory))
+(require 'perinf)
 (require 'emacs-nxs-themes)
 (require 'emacs-nxs-movements)
 (require 'emacs-nxs-formatter)
