@@ -70,7 +70,11 @@
 
 (defun perinf-task--select-person ()
   "Prompt for a registered person and return the stable ID."
-  (let* ((people (perinf-storage-list 'person perinf-current-project))
+  (let* ((people
+          (seq-filter
+           (lambda (person)
+             (eq (perinf-object-status person) 'active))
+           (perinf-storage-list 'person perinf-current-project)))
          (choices
           (mapcar
            (lambda (person)

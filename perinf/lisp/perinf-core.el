@@ -73,6 +73,26 @@ part of the persistent shared Org data."
          'follow-link t
          properties))
 
+(defun perinf-core--call-interactively-from-button (command)
+  "Call COMMAND from a text button without losing minibuffer focus.
+Mouse button actions are deferred until their mouse event has finished.
+Keyboard button actions run COMMAND immediately."
+  (if (mouse-event-p last-input-event)
+      (let ((buffer (current-buffer)))
+        (run-at-time
+         0 nil
+         (lambda ()
+           (when (buffer-live-p buffer)
+             (with-current-buffer buffer
+               (call-interactively command))))))
+    (call-interactively command)))
+
+(defun perinf-core--call-function-from-button (function &rest arguments)
+  "Call FUNCTION with ARGUMENTS after the current button event finishes."
+  (if (mouse-event-p last-input-event)
+      (apply #'run-at-time 0 nil function arguments)
+    (apply function arguments)))
+
 (defun perinf-core--insert-navigation ()
   "Insert the translated Personal Information System main navigation."
   (dolist (entry '((home . perinf-core-home)
@@ -274,7 +294,8 @@ part of the persistent shared Org data."
              (perinf-core--insert-button
               (perinf-i18n (car entry))
               (lambda (_button)
-                (call-interactively #'perinf-person-create))))
+                (perinf-core--call-interactively-from-button
+                 #'perinf-person-create))))
             ('decision
              (perinf-core--insert-button
               (perinf-i18n (car entry))
@@ -562,7 +583,9 @@ part of the persistent shared Org data."
           "\n\n")
   (perinf-core--insert-button
    (perinf-i18n 'action.new-person)
-   (lambda (_button) (call-interactively #'perinf-person-create)))
+   (lambda (_button)
+     (perinf-core--call-interactively-from-button
+      #'perinf-person-create)))
   (insert "   ")
   (perinf-core--insert-button
    (perinf-i18n 'action.new-decision)
@@ -1592,25 +1615,83 @@ part of the persistent shared Org data."
                       'face '(:height 1.2 :weight bold))
           "\n\n")
   (if perinf-current-project
-      (insert
-       (format "%s: %s\n"
-               (perinf-i18n 'project.title)
-               (perinf-core--metadata-value 'PROJECT_TITLE))
-       (format "%s: %s\n"
-               (perinf-i18n 'project.location)
-               (abbreviate-file-name perinf-current-project))
-       (format "%s: %s\n"
-               (perinf-i18n 'project.language)
-               (perinf-core--metadata-value 'INTERFACE_LANGUAGE))
-       (format "%s: %s\n"
-               (perinf-i18n 'project.date-format)
-               (perinf-core--display-setting 'DATE_FORMAT))
-       (format "%s: %s\n"
-               (perinf-i18n 'project.time-format)
-               (perinf-core--display-setting 'TIME_FORMAT))
-       (format "%s: %s\n"
-               (perinf-i18n 'project.schema-version)
-               (perinf-core--metadata-value 'SCHEMA_VERSION)))
+      (progn
+        (insert
+         (format "%s: %s\n"
+                 (perinf-i18n 'project.title)
+                 (perinf-core--metadata-value 'PROJECT_TITLE))
+         (format "%s: %s\n"
+                 (perinf-i18n 'project.location)
+                 (abbreviate-file-name perinf-current-project))
+         (format "%s: %s\n"
+                 (perinf-i18n 'project.language)
+                 (perinf-core--metadata-value 'INTERFACE_LANGUAGE))
+         (format "%s: %s\n"
+                 (perinf-i18n 'project.date-format)
+                 (perinf-core--display-setting 'DATE_FORMAT))
+         (format "%s: %s\n"
+                 (perinf-i18n 'project.time-format)
+                 (perinf-core--display-setting 'TIME_FORMAT))
+         (format "%s: %s\n"
+                 (perinf-i18n 'project.schema-version)
+                 (perinf-core--metadata-value 'SCHEMA_VERSION)))
+        (insert "\n"
+                (propertize
+                 (perinf-i18n 'administration.people)
+                 'face 'bold)
+                "\n\n")
+        (let ((people
+               (perinf-storage-list 'person perinf-current-project)))
+          (if people
+              (dolist (person people)
+                (let* ((person-id (perinf-object-id person))
+                       (status (perinf-object-status person))
+                       (references
+                        (perinf-storage-person-references
+                         person-id perinf-current-project))
+                       (task-count
+                        (length (plist-get references :tasks)))
+                       (meeting-count
+                        (length (plist-get references :meetings))))
+                  (insert "• "
+                          (perinf-object-title person)
+                          " — "
+                          (perinf-i18n
+                           (intern (format "status.%s" status)))
+                          (format
+                           " — %s: %d, %s: %d\n  "
+                           (perinf-i18n 'task.count)
+                           task-count
+                           (perinf-i18n 'meeting.count)
+                           meeting-count))
+                  (if (eq status 'active)
+                      (perinf-core--insert-button
+                       (perinf-i18n 'person.archive)
+                       (lambda (button)
+                         (perinf-core--call-function-from-button
+                          #'perinf-person-archive
+                          (button-get button 'perinf-person-id)))
+                       'perinf-person-id person-id)
+                    (perinf-core--insert-button
+                     (perinf-i18n 'person.reactivate)
+                     (lambda (button)
+                       (perinf-core--call-function-from-button
+                        #'perinf-person-reactivate
+                        (button-get button 'perinf-person-id)))
+                     'perinf-person-id person-id))
+                  (insert "   ")
+                  (perinf-core--insert-button
+                   (perinf-i18n 'person.delete)
+                   (lambda (button)
+                     (perinf-core--call-function-from-button
+                      #'perinf-person-delete
+                      (button-get button 'perinf-person-id)))
+                   'perinf-person-id person-id
+                   'face (if (or (> task-count 0) (> meeting-count 0))
+                             'shadow
+                           'error))
+                  (insert "\n\n")))
+            (insert (perinf-i18n 'person.none) "\n"))))
     (insert (perinf-i18n 'home.no-project) "\n")))
 
 (defun perinf-core--render ()

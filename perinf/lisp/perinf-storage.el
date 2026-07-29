@@ -407,6 +407,92 @@ This implementation supports controlled task status changes."
           (lambda (object) (equal (perinf-object-id object) id))
           (perinf-storage-list 'task project)))))
 
+(defun perinf-storage-person-references (person-id &optional project-directory)
+  "Return tasks and meetings that refer to PERSON-ID in PROJECT-DIRECTORY."
+  (let* ((project
+          (or project-directory
+              (signal 'perinf-storage-error
+                      '("No project directory supplied"))))
+         (tasks
+          (seq-filter
+           (lambda (task)
+             (equal
+              (alist-get 'ASSIGNEE_ID (perinf-object-properties task))
+              person-id))
+           (perinf-storage-list 'task project)))
+         (meetings
+          (seq-filter
+           (lambda (meeting)
+             (seq-some
+              (lambda (participant)
+                (equal
+                 (alist-get
+                  'PERSON_ID (perinf-object-properties participant))
+                 person-id))
+              (perinf-storage-list-children
+               (perinf-object-id meeting) 'participants project)))
+           (perinf-storage-list 'meeting project))))
+    (list :tasks tasks :meetings meetings)))
+
+(defun perinf-storage-set-person-status
+    (person-id status &optional project-directory)
+  "Set PERSON-ID to active or inactive STATUS in PROJECT-DIRECTORY."
+  (let* ((project
+          (or project-directory
+              (signal 'perinf-storage-error
+                      '("No project directory supplied"))))
+         (file (expand-file-name "data/people.org" project)))
+    (unless (memq status '(active inactive))
+      (signal 'perinf-storage-error
+              (list (format "Unsupported person status: %s" status))))
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Person storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id person-id)
+        (signal 'perinf-object-not-found (list person-id)))
+      (unless (equal (org-entry-get nil "PERINF_TYPE") "person")
+        (signal 'perinf-storage-error
+                (list (format "Object is not a person: %s" person-id))))
+      (org-entry-put nil "PERINF_STATUS" (symbol-name status))
+      (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now))
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find
+     (lambda (person) (equal (perinf-object-id person) person-id))
+     (perinf-storage-list 'person project))))
+
+(defun perinf-storage-delete-person (person-id &optional project-directory)
+  "Permanently delete unreferenced PERSON-ID from PROJECT-DIRECTORY.
+Signal an error when tasks or meetings still refer to the person."
+  (let* ((project
+          (or project-directory
+              (signal 'perinf-storage-error
+                      '("No project directory supplied"))))
+         (references (perinf-storage-person-references person-id project))
+         (tasks (plist-get references :tasks))
+         (meetings (plist-get references :meetings))
+         (file (expand-file-name "data/people.org" project)))
+    (when (or tasks meetings)
+      (user-error
+       "Person is still referenced by %d task(s) and %d meeting(s)"
+       (length tasks) (length meetings)))
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Person storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id person-id)
+        (signal 'perinf-object-not-found (list person-id)))
+      (unless (equal (org-entry-get nil "PERINF_TYPE") "person")
+        (signal 'perinf-storage-error
+                (list (format "Object is not a person: %s" person-id))))
+      (org-cut-subtree)
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    t))
+
 (defun perinf-storage-list (type &optional project-directory)
   "Return all objects of TYPE from PROJECT-DIRECTORY."
   (let ((project
