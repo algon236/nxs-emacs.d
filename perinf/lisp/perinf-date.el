@@ -1,4 +1,4 @@
-;;; perinf-date.el --- Date normalization for Personal Information System -*- lexical-binding: t; -*-
+;;; perinf-date.el --- Date normalization for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 

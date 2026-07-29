@@ -1,4 +1,4 @@
-;;; perinf-project.el --- Project metadata for Personal Information System -*- lexical-binding: t; -*-
+;;; perinf-project.el --- Project metadata for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -9,12 +9,12 @@
 (require 'perinf-project-schema)
 
 (defconst perinf-project-metadata-file "perinf-project.org"
-  "File containing authoritative Personal Information System project metadata.")
+  "File containing authoritative Personal Work and Information System project metadata.")
 
 (defconst perinf-project-directories
   '("data" "data/meetings" "data/transcripts" "data/minutes"
     "media" "media/audio" "archive" "config")
-  "Directories created for a new Personal Information System project.")
+  "Directories created for a new Personal Work and Information System project.")
 
 (defconst perinf-project-data-files
   '(("data/tasks.org" . "Tasks")
@@ -25,7 +25,7 @@
   "Initial shared Org data files and their canonical English titles.")
 
 (defun perinf-project-p (directory)
-  "Return non-nil when DIRECTORY contains Personal Information System project metadata."
+  "Return non-nil when DIRECTORY contains Personal Work and Information System project metadata."
   (file-regular-p
    (expand-file-name perinf-project-metadata-file directory)))
 
@@ -34,13 +34,13 @@
 Return an alist with language-independent property names."
   (let ((file (expand-file-name perinf-project-metadata-file directory)))
     (unless (file-readable-p file)
-      (user-error "Personal Information System project metadata is not readable: %s" file))
+      (user-error "Personal Work and Information System project metadata is not readable: %s" file))
     (with-temp-buffer
       (insert-file-contents file)
       (org-mode)
       (goto-char (point-min))
       (unless (re-search-forward org-heading-regexp nil t)
-        (user-error "Personal Information System project metadata has no heading: %s" file))
+        (user-error "Personal Work and Information System project metadata has no heading: %s" file))
       (let ((metadata
              (mapcar
               (lambda (property)
@@ -68,7 +68,7 @@ Return an alist with language-independent property names."
     (write-region content nil file nil 'silent)))
 
 (defun perinf-project-create (directory title language date-format time-format)
-  "Create a Personal Information System project in DIRECTORY.
+  "Create a Personal Work and Information System project in DIRECTORY.
 TITLE is user-written project content.  LANGUAGE, DATE-FORMAT, and
 TIME-FORMAT are language-independent setting symbols.  DIRECTORY must not
 already exist.  Return the normalized project directory."

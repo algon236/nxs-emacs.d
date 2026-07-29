@@ -1,4 +1,4 @@
-;;; perinf-storage.el --- Storage API boundary for Personal Information System -*- lexical-binding: t; -*-
+;;; perinf-storage.el --- Storage API boundary for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -15,15 +15,15 @@
 (require 'org-id)
 (require 'perinf-project)
 
-(define-error 'perinf-storage-error "Personal Information System storage error")
-(define-error 'perinf-object-not-found "Personal Information System object not found"
+(define-error 'perinf-storage-error "Personal Work and Information System storage error")
+(define-error 'perinf-object-not-found "Personal Work and Information System object not found"
   'perinf-storage-error)
 
 (cl-defstruct perinf-object
   id type title status properties sections file position checksum modified-p)
 
 (defun perinf-storage-read-project (directory)
-  "Return project metadata for the Personal Information System project in DIRECTORY."
+  "Return project metadata for the Personal Work and Information System project in DIRECTORY."
   (perinf-project-read-metadata directory))
 
 (defun perinf-storage--iso-now ()
@@ -323,7 +323,7 @@
                      '("No project directory supplied")))))
     (unless (perinf-project-p project)
       (signal 'perinf-storage-error
-              (list (format "Not an Personal Information System project: %s" project))))
+              (list (format "Not a Personal Work and Information System project: %s" project))))
     (pcase type
       ('task (perinf-storage--create-task data project))
       ('meeting (perinf-storage--create-meeting data project))
