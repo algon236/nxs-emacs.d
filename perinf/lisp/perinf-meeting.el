@@ -8,6 +8,7 @@
 (require 'perinf-i18n)
 (require 'perinf-storage)
 (require 'perinf-time)
+(require 'seq)
 
 (defun perinf-meeting--setting (property)
   "Return PROPERTY from the current project metadata."
@@ -88,7 +89,11 @@
 
 (defun perinf-meeting--select-person ()
   "Prompt for a person and return its ID."
-  (let* ((people (perinf-storage-list 'person perinf-current-project))
+  (let* ((people
+          (seq-filter
+           (lambda (person)
+             (eq (perinf-object-status person) 'active))
+           (perinf-storage-list 'person perinf-current-project)))
          (choices
           (mapcar (lambda (person)
                     (cons (perinf-object-title person)
