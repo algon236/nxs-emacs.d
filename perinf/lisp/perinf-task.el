@@ -1,4 +1,4 @@
-;;; perinf-task.el --- Task workflow for Personal Information System -*- lexical-binding: t; -*-
+;;; perinf-task.el --- Task workflow for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 

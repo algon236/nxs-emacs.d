@@ -1,4 +1,4 @@
-;;; perinf-time.el --- Time normalization for Personal Information System -*- lexical-binding: t; -*-
+;;; perinf-time.el --- Time normalization for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 

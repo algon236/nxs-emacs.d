@@ -9,7 +9,7 @@
     agenda-item document audio-recording transcript corrected-transcript
     minutes-series minutes minutes-section decision task-proposal
     decision-proposal history-entry)
-  "Language-independent object types in the initial Personal Information System core.")
+  "Language-independent object types in the initial Personal Work and Information System core.")
 
 (provide 'perinf-object-types)
 

@@ -3,7 +3,7 @@
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'de
- '((app.name . "Personal Information System")
+ '((app.name . "Personal Work and Information System")
    (common.close . "Schließen")
    (common.error . "Fehler")
    (common.not-implemented . "Diese Funktion gehört zum nächsten Umsetzungsschritt.")
@@ -100,12 +100,12 @@
    (project.location . "Speicherort")
    (project.time-format . "Zeitformat")
    (project.create . "Projekt erstellen")
-   (project.created . "Das Personal Information System-Projekt wurde erstellt.")
+   (project.created . "Das Personal Work and Information System-Projekt wurde erstellt.")
    (project.date-format-prompt . "Datumsformat: ")
    (project.create-directory-prompt . "Ordner für das neue Projekt: ")
    (project.language-prompt . "Oberflächensprache: ")
    (project.open . "Projekt öffnen")
-   (project.open-directory-prompt . "Personal Information System-Projektordner: ")
+   (project.open-directory-prompt . "Personal Work and Information System-Projektordner: ")
    (project.time-format-prompt . "Zeitformat: ")
    (project.title-prompt . "Projektname: ")
    (project.title . "Projekt")

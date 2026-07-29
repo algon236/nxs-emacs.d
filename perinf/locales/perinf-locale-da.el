@@ -3,7 +3,7 @@
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'da
- '((app.name . "Personal Information System")
+ '((app.name . "Personal Work and Information System")
    (common.close . "Luk")
    (common.error . "Fejl")
    (common.not-implemented . "Denne funktion hører til næste implementeringstrin.")
@@ -100,12 +100,12 @@
    (project.location . "Placering")
    (project.time-format . "Tidsformat")
    (project.create . "Opret projekt")
-   (project.created . "Personal Information System-projektet blev oprettet.")
+   (project.created . "Personal Work and Information System-projektet blev oprettet.")
    (project.date-format-prompt . "Datoformat: ")
    (project.create-directory-prompt . "Mappe til nyt projekt: ")
    (project.language-prompt . "Brugerfladens sprog: ")
    (project.open . "Åbn projekt")
-   (project.open-directory-prompt . "Mappe med Personal Information System-projekt: ")
+   (project.open-directory-prompt . "Mappe med Personal Work and Information System-projekt: ")
    (project.time-format-prompt . "Tidsformat: ")
    (project.title-prompt . "Projektets navn: ")
    (project.title . "Projekt")

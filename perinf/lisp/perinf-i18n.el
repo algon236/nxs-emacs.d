@@ -1,4 +1,4 @@
-;;; perinf-i18n.el --- Locale handling for Personal Information System -*- lexical-binding: t; -*-
+;;; perinf-i18n.el --- Locale handling for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -12,7 +12,7 @@
   :prefix "perinf-")
 
 (defcustom perinf-interface-language 'en
-  "Language used by the Personal Information System interface."
+  "Language used by the Personal Work and Information System interface."
   :type '(choice (const :tag "English" en)
                  (const :tag "Dansk" da)
                  (const :tag "Français" fr)
@@ -21,7 +21,7 @@
   :group 'perinf)
 
 (defconst perinf-i18n-supported-locales '(en da fr de es)
-  "Locale identifiers shipped with Personal Information System.")
+  "Locale identifiers shipped with Personal Work and Information System.")
 
 (defvar perinf-i18n--locales (make-hash-table :test #'eq)
   "Registered locale tables.")
@@ -30,11 +30,11 @@
   "Register TRANSLATIONS for LOCALE.
 TRANSLATIONS is an alist whose keys are language-independent symbols."
   (unless (memq locale perinf-i18n-supported-locales)
-    (error "Unsupported Personal Information System locale: %S" locale))
+    (error "Unsupported Personal Work and Information System locale: %S" locale))
   (puthash locale translations perinf-i18n--locales))
 
 (defun perinf-i18n-load-locales ()
-  "Load all locale data bundled with Personal Information System."
+  "Load all locale data bundled with Personal Work and Information System."
   (dolist (locale perinf-i18n-supported-locales)
     (require (intern (format "perinf-locale-%s" locale)))))
 

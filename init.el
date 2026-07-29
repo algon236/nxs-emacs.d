@@ -796,7 +796,7 @@ or is an ERC buffer."
   (defvar emacs-nxs/start-max-items 10)
   (defcustom emacs-nxs/start-perinf-project-directory
     (expand-file-name "~/org/PerInf/")
-    "Personal Information System project shown on the start page."
+    "Personal Work and Information System project shown on the start page."
     :type 'directory
     :group 'emacs)
   (defcustom emacs-nxs/start-perinf-horizon-days 30

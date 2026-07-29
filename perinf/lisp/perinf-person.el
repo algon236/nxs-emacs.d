@@ -1,4 +1,4 @@
-;;; perinf-person.el --- Person workflow for Personal Information System -*- lexical-binding: t; -*-
+;;; perinf-person.el --- Person workflow for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -10,7 +10,7 @@
 
 ;;;###autoload
 (defun perinf-person-create ()
-  "Interactively create a person in the current Personal Information System project."
+  "Interactively create a person in the current Personal Work and Information System project."
   (interactive)
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))
