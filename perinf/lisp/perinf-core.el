@@ -552,7 +552,8 @@ Keyboard button actions run COMMAND immediately."
                 (perinf-core--insert-button
                  (perinf-i18n 'action.add-agenda-item)
                  (lambda (button)
-                   (perinf-meeting-add-agenda-item
+                   (perinf-core--call-function-from-button
+                    #'perinf-meeting-add-agenda-item
                     (button-get button 'perinf-meeting-id)))
                  'perinf-meeting-id (perinf-object-id meeting))
                 (when agenda-items
@@ -1190,6 +1191,19 @@ Keyboard button actions run COMMAND immediately."
                 (perinf-object-id object)
                 'agenda
                 perinf-current-project))
+              (all-documents
+               (perinf-storage-list 'document perinf-current-project))
+              (meeting-documents
+               (seq-filter
+                (lambda (document)
+                  (and
+                   (equal
+                    (alist-get 'MEETING_ID
+                               (perinf-object-properties document))
+                    (perinf-object-id object))
+                   (null (alist-get 'AGENDA_ITEM_ID
+                                    (perinf-object-properties document)))))
+                all-documents))
               (meeting-decisions
                (seq-filter
                 (lambda (decision)
@@ -1446,13 +1460,49 @@ Keyboard button actions run COMMAND immediately."
                  "\n")
          (if agenda-items
              (dolist (item agenda-items)
-               (insert
-                (format "%s. %s\n"
-                        (alist-get
-                         'AGENDA_NUMBER
-                         (perinf-object-properties item))
-                        (perinf-object-title item))))
+               (let ((item-documents
+                      (seq-filter
+                       (lambda (document)
+                         (equal
+                          (alist-get 'AGENDA_ITEM_ID
+                                     (perinf-object-properties document))
+                          (perinf-object-id item)))
+                       all-documents)))
+                 (insert
+                  (format "%s. %s   "
+                          (alist-get
+                           'AGENDA_NUMBER
+                           (perinf-object-properties item))
+                          (perinf-object-title item)))
+                 (perinf-core--insert-button
+                  (perinf-i18n 'document.attach-to-agenda-item)
+                  (lambda (button)
+                    (perinf-core--call-function-from-button
+                     #'perinf-meeting-attach-document
+                     (button-get button 'perinf-meeting-id)
+                     (button-get button 'perinf-agenda-item-id)))
+                  'perinf-meeting-id (perinf-object-id object)
+                  'perinf-agenda-item-id (perinf-object-id item))
+                 (insert "\n")
+                 (dolist (document item-documents)
+                   (insert "    • " (perinf-object-title document) "\n"))))
            (insert (perinf-i18n 'details.none) "\n"))
+         (insert "\n"
+                 (propertize (perinf-i18n 'document.meeting-title)
+                             'face 'bold)
+                 "   ")
+         (perinf-core--insert-button
+          (perinf-i18n 'document.attach-to-meeting)
+          (lambda (button)
+            (perinf-core--call-function-from-button
+             #'perinf-meeting-attach-document
+             (button-get button 'perinf-meeting-id)))
+          'perinf-meeting-id (perinf-object-id object))
+         (insert "\n")
+         (if meeting-documents
+             (dolist (document meeting-documents)
+               (insert "• " (perinf-object-title document) "\n"))
+           (insert (perinf-i18n 'document.none) "\n"))
          (insert "\n"
                  (propertize (perinf-i18n 'meeting.decisions)
                              'face 'bold)
