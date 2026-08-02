@@ -9,6 +9,7 @@
     (person active inactive)
     (meeting planned in-progress held postponed cancelled)
     (audio-recording expected available missing processing transcribed failed)
+    (document available missing)
     (transcript queued processing raw failed)
     (minutes ai-draft manual-draft under-review secretary-approved
              awaiting-final-approval final-approved rejected superseded))

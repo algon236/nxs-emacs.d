@@ -94,6 +94,10 @@
   #'perinf-meeting-attach-audio)
 
 ;;;###autoload
+(defalias 'perinf-attach-meeting-document
+  #'perinf-meeting-attach-document)
+
+;;;###autoload
 (defalias 'perinf-import-meeting-transcript
   #'perinf-meeting-import-transcript)
 
