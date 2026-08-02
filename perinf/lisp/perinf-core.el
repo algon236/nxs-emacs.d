@@ -63,6 +63,9 @@ part of the persistent shared Org data."
 (defvar-local perinf-selected-object nil
   "Object displayed in the detail view of the current buffer.")
 
+(defvar-local perinf-administration-people-expanded-p nil
+  "Non-nil when the person administration list is expanded.")
+
 (define-derived-mode perinf-mode special-mode "Personal Work and Information System"
   "Major mode for the Personal Work and Information System start page.")
 
@@ -1659,6 +1662,12 @@ Keyboard button actions run COMMAND immediately."
       (perinf-core--render))
     (pop-to-buffer buffer)))
 
+(defun perinf-core-toggle-administration-people ()
+  "Toggle the person list in the administration view."
+  (setq perinf-administration-people-expanded-p
+        (not perinf-administration-people-expanded-p))
+  (perinf-core--render))
+
 (defun perinf-core--render-administration ()
   "Insert the administration view."
   (insert (propertize (perinf-i18n 'administration.title)
@@ -1686,62 +1695,69 @@ Keyboard button actions run COMMAND immediately."
                  (perinf-i18n 'project.schema-version)
                  (perinf-core--metadata-value 'SCHEMA_VERSION)))
         (insert "\n"
-                (propertize
-                 (perinf-i18n 'administration.people)
-                 'face 'bold)
-                "\n\n")
-        (let ((people
-               (perinf-storage-list 'person perinf-current-project)))
-          (if people
-              (dolist (person people)
-                (let* ((person-id (perinf-object-id person))
-                       (status (perinf-object-status person))
-                       (references
-                        (perinf-storage-person-references
-                         person-id perinf-current-project))
-                       (task-count
-                        (length (plist-get references :tasks)))
-                       (meeting-count
-                        (length (plist-get references :meetings))))
-                  (insert "• "
-                          (perinf-object-title person)
-                          " — "
-                          (perinf-i18n
-                           (intern (format "status.%s" status)))
-                          (format
-                           " — %s: %d, %s: %d\n  "
-                           (perinf-i18n 'task.count)
-                           task-count
-                           (perinf-i18n 'meeting.count)
-                           meeting-count))
-                  (if (eq status 'active)
+                (if perinf-administration-people-expanded-p "▾ " "▸ "))
+        (perinf-core--insert-button
+         (if perinf-administration-people-expanded-p
+             (perinf-i18n 'administration.hide-people)
+           (perinf-i18n 'administration.people))
+         (lambda (_button)
+           (perinf-core-toggle-administration-people))
+         'face 'bold)
+        (insert "\n")
+        (when perinf-administration-people-expanded-p
+          (insert "\n")
+          (let ((people
+                 (perinf-storage-list 'person perinf-current-project)))
+            (if people
+                (dolist (person people)
+                  (let* ((person-id (perinf-object-id person))
+                         (status (perinf-object-status person))
+                         (references
+                          (perinf-storage-person-references
+                           person-id perinf-current-project))
+                         (task-count
+                          (length (plist-get references :tasks)))
+                         (meeting-count
+                          (length (plist-get references :meetings))))
+                    (insert "• "
+                            (perinf-object-title person)
+                            " — "
+                            (perinf-i18n
+                             (intern (format "status.%s" status)))
+                            (format
+                             " — %s: %d, %s: %d\n  "
+                             (perinf-i18n 'task.count)
+                             task-count
+                             (perinf-i18n 'meeting.count)
+                             meeting-count))
+                    (if (eq status 'active)
+                        (perinf-core--insert-button
+                         (perinf-i18n 'person.archive)
+                         (lambda (button)
+                           (perinf-core--call-function-from-button
+                            #'perinf-person-archive
+                            (button-get button 'perinf-person-id)))
+                         'perinf-person-id person-id)
                       (perinf-core--insert-button
-                       (perinf-i18n 'person.archive)
+                       (perinf-i18n 'person.reactivate)
                        (lambda (button)
                          (perinf-core--call-function-from-button
-                          #'perinf-person-archive
+                          #'perinf-person-reactivate
                           (button-get button 'perinf-person-id)))
-                       'perinf-person-id person-id)
+                       'perinf-person-id person-id))
+                    (insert "   ")
                     (perinf-core--insert-button
-                     (perinf-i18n 'person.reactivate)
+                     (perinf-i18n 'person.delete)
                      (lambda (button)
                        (perinf-core--call-function-from-button
-                        #'perinf-person-reactivate
+                        #'perinf-person-delete
                         (button-get button 'perinf-person-id)))
-                     'perinf-person-id person-id))
-                  (insert "   ")
-                  (perinf-core--insert-button
-                   (perinf-i18n 'person.delete)
-                   (lambda (button)
-                     (perinf-core--call-function-from-button
-                      #'perinf-person-delete
-                      (button-get button 'perinf-person-id)))
-                   'perinf-person-id person-id
-                   'face (if (or (> task-count 0) (> meeting-count 0))
-                             'shadow
-                           'error))
-                  (insert "\n\n")))
-            (insert (perinf-i18n 'person.none) "\n"))))
+                     'perinf-person-id person-id
+                     'face (if (or (> task-count 0) (> meeting-count 0))
+                               'shadow
+                             'error))
+                    (insert "\n\n")))
+              (insert (perinf-i18n 'person.none) "\n")))))
     (insert (perinf-i18n 'home.no-project) "\n")))
 
 (defun perinf-core--render ()

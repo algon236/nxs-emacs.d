@@ -35,6 +35,7 @@
    (action.new-person . "Person erfassen")
    (action.new-task . "Aufgabe erstellen")
    (administration.people . "Personen verwalten")
+   (administration.hide-people . "Personen ausblenden")
    (administration.title . "Administration")
    (audio.attach . "Audiodatei zuordnen")
    (audio.attached . "Die Audiodatei wurde der Sitzung zugeordnet.")

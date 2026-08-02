@@ -35,6 +35,7 @@
    (action.new-person . "Registrér person")
    (action.new-task . "Opret opgave")
    (administration.people . "Administrér personer")
+   (administration.hide-people . "Skjul personer")
    (administration.title . "Administration")
    (audio.attach . "Tilknyt lydfil")
    (audio.attached . "Lydfilen blev knyttet til mødet.")
