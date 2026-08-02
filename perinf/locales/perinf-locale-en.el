@@ -35,6 +35,7 @@
    (action.new-person . "Register person")
    (action.new-task . "Create task")
    (administration.people . "Manage people")
+   (administration.hide-people . "Hide people")
    (administration.title . "Administration")
    (audio.attach . "Attach audio file")
    (audio.attached . "The audio file was attached to the meeting.")

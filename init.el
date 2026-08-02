@@ -347,6 +347,7 @@ parent directory created."
    ("C-x 5 l"  . select-frame-by-name)
    ("C-x 5 s"  . set-frame-name)
    ("C-x ." . calendar)
+   ("C-æ" . perinf)
    ("RET" . newline-and-indent)
    ("C-z" . nil)
    ("C-x C-z" . nil)
@@ -954,18 +955,18 @@ Tasks without a deadline are placed after dated objects."
             (aref danish-months
                   (1- (string-to-number (format-time-string "%m" now))))))
       (list
-       (format "⚙   Emacs PID:  %s     |  Oppetid: %s"
+        (format "🕘  %s den %s. %s %s   %s"
+               weekday day month (format-time-string "%Y" now)
+              (format-time-string "%H:%M:%S" now))
+        (format "🏷️  Version:   %s    |  Platform: %s"
+               emacs-version system-type)
+        (format "⚙   Emacs PID:  %s     |  Oppetid: %s"
                (emacs-pid) (emacs-uptime))
        (format "💾  Hukommelse: %.1f MB  |  CPU Time: %.1f s"
                (/ rss-kb 1024.0) cpu-seconds)
        (format "📦  Pakker:     %s        |  Buffere: %s/%s total"
                (length package-activated-list)
-               visible-buffers total-buffers)
-       (format "🏷️  Version:   %s    |  Platform: %s"
-               emacs-version system-type)
-       (format "🕘  Tid:    kl. %s, %s %s. %s %s"
-               (format-time-string "%H:%M:%S" now)
-               weekday day month (format-time-string "%Y" now)))))
+               visible-buffers total-buffers))))
 
   (defun emacs-nxs/start-refresh (&optional _ignore-auto _noconfirm)
     "Rebuild the Emacs NXS start page."
@@ -980,6 +981,9 @@ Tasks without a deadline are placed after dated objects."
            (left-margin (make-string (max 0 (/ (- available-width content-width) 2)) ?\s))
            (bookmarks (emacs-nxs/start--bookmark-items))
            (perinf-items (emacs-nxs/start--perinf-items))
+           (bookmark-heading "BOGMÆRKE")
+           (perinf-heading "AFTALER")
+           (heading-face '(:weight bold :underline t :foreground "#00c853"))
            (rows (max (length bookmarks) (length perinf-items)))
            (system-information (emacs-nxs/start--system-information))
            (system-information-width
@@ -1017,9 +1021,15 @@ Tasks without a deadline are placed after dated objects."
             (insert (make-string (max 0 (/ (- available-width (string-width line)) 2)) ?\s)
                     (propertize line 'face '(:weight bold)) "\n"))
           (insert "\n\n")
-          (insert left-margin (propertize "  BOOKMARKS" 'face 'bold))
-          (insert (make-string (max 1 (- column-width 11)) ?\s) "   ")
-          (insert (propertize "  PERSONAL INFORMATION SYSTEM" 'face 'bold) "\n")
+          (insert left-margin "  "
+                  (propertize bookmark-heading 'face heading-face))
+          (insert (make-string
+                   (max 1 (- column-width
+                             2
+                             (string-width bookmark-heading)))
+                   ?\s)
+                  "   ")
+          (insert "  " (propertize perinf-heading 'face heading-face) "\n")
           (dotimes (index rows)
             (let ((bookmark (nth index bookmarks))
                   (perinf-item (nth index perinf-items)))
