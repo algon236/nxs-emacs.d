@@ -941,32 +941,49 @@ Tasks without a deadline are placed after dated objects."
            (visible-buffers (emacs-nxs/start--visible-buffer-count))
            (total-buffers (length (buffer-list)))
            (now (current-time))
-           (danish-weekdays
-            ["søndag" "mandag" "tirsdag" "onsdag"
-             "torsdag" "fredag" "lørdag"])
            (danish-months
             ["januar" "februar" "marts" "april" "maj" "juni"
              "juli" "august" "september" "oktober" "november" "december"])
-           (weekday
-            (aref danish-weekdays
-                  (string-to-number (format-time-string "%w" now))))
            (day (string-to-number (format-time-string "%d" now)))
            (month
             (aref danish-months
-                  (1- (string-to-number (format-time-string "%m" now))))))
-      (list
-        (format "🕘  %s den %s. %s %s   %s"
-               weekday day month (format-time-string "%Y" now)
-              (format-time-string "%H:%M:%S" now))
-        (format "🏷️  Version:   %s    |  Platform: %s"
-               emacs-version system-type)
-        (format "⚙   Emacs PID:  %s     |  Oppetid: %s"
-               (emacs-pid) (emacs-uptime))
-       (format "💾  Hukommelse: %.1f MB  |  CPU Time: %.1f s"
-               (/ rss-kb 1024.0) cpu-seconds)
-       (format "📦  Pakker:     %s        |  Buffere: %s/%s total"
-               (length package-activated-list)
-               visible-buffers total-buffers))))
+                  (1- (string-to-number (format-time-string "%m" now)))))
+           (rows
+            `(("🕘" "Dato"
+               ,(format "%s. %s %s"
+                        day month (format-time-string "%Y" now))
+               "Tid" ,(format-time-string "%H:%M:%S" now))
+              ("🏷️" "Version" ,emacs-version "Platform" ,(format "%s" system-type))
+              ("⚙" "Emacs PID" ,(format "%s" (emacs-pid))
+               "Oppetid" ,(emacs-uptime))
+              ("💾" "Hukommelse" ,(format "%.1f MB" (/ rss-kb 1024.0))
+               "CPU Time" ,(format "%.1f s" cpu-seconds))
+              ("📦" "Pakker" ,(format "%s" (length package-activated-list))
+               "Buffere" ,(format "%s/%s total" visible-buffers total-buffers))))
+           (icon-width (apply #'max (mapcar (lambda (row) (string-width (nth 0 row))) rows)))
+           (left-label-width
+            (apply #'max (mapcar (lambda (row) (string-width (nth 1 row))) rows)))
+           (left-value-width
+            (apply #'max (mapcar (lambda (row) (string-width (nth 2 row))) rows)))
+           (right-label-width
+            (apply #'max (mapcar (lambda (row) (string-width (nth 3 row))) rows))))
+      (mapcar
+       (lambda (row)
+         (let ((icon (nth 0 row))
+               (left-label (nth 1 row))
+               (left-value (nth 2 row))
+               (right-label (nth 3 row))
+               (right-value (nth 4 row)))
+           (concat
+            icon (make-string (- icon-width (string-width icon)) ?\s) "  "
+            left-label
+            (make-string (- left-label-width (string-width left-label)) ?\s) ": "
+            left-value
+            (make-string (- left-value-width (string-width left-value)) ?\s) "  |  "
+            right-label
+            (make-string (- right-label-width (string-width right-label)) ?\s) ": "
+            right-value)))
+       rows)))
 
   (defun emacs-nxs/start-refresh (&optional _ignore-auto _noconfirm)
     "Rebuild the Emacs NXS start page."
@@ -3638,9 +3655,7 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   (setq org-latex-default-packages-alist nil
         org-latex-packages-alist nil
         org-latex-hyperref-template nil
-        org-latex-compiler "lualatex"
-        org-latex-default-table-environment "tblr"
-        org-latex-tables-centered nil))
+        org-latex-compiler "lualatex"))
 
 
 ;;; │ SPEEDBAR
@@ -4096,6 +4111,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 (require 'emacs-nxs-erc-image)
 (require 'emacs-nxs-yt)
 (require 'emacs-nxs-gh)
+(require 'emacs-nxs-org-latex)
 ;;NS  own and stolen functions (shame on me)
 (if nec/measure-time (nec/sstimer "init"))
 (require 'sleep-report)
