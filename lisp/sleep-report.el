@@ -5,7 +5,7 @@
 (require 'cl-lib)
 (require 'subr-x)
 
-(defconst emacs-nxs-sleep-report-version 10
+(defconst emacs-nxs-sleep-report-version 13
   "Projektets heltalsversion.")
 
 (defgroup emacs-nxs-sleep-report nil
@@ -61,6 +61,24 @@
                                     (cdr rows)))))))))
       (or resultat
           (user-error "Ingen navngivet søvntabel fundet i %s" (buffer-name))))))
+
+(defun emacs-nxs-sleep-report--find-named-table (name)
+  "Returnér rækkerne i Org-tabellen med navnet NAME, inklusive tabelhovedet."
+  (save-excursion
+    (goto-char (point-min))
+    (unless (re-search-forward
+             (format "^[ \t]*#\\+NAME:[ \t]*%s[ \t]*$"
+                     (regexp-quote name))
+             nil t)
+      (user-error "Tabellen '%s' blev ikke fundet" name))
+    (forward-line 1)
+    (while (and (not (eobp)) (looking-at-p "^[ \t]*$"))
+      (forward-line 1))
+    (unless (looking-at-p "^[ \t]*|")
+      (user-error "Der står ingen Org-tabel efter navnet '%s'" name))
+    (mapcar #'emacs-nxs-sleep-report--trim-row
+            (cl-remove-if (lambda (row) (eq row 'hline))
+                          (org-table-to-lisp)))))
 
 (defun emacs-nxs-sleep-report--period (name)
   "Udled perioden fra tabelnavnet NAME, for eksempel juli-2026."
@@ -118,6 +136,51 @@ Timer skal være 0-24, og minutter 0-59."
                (regexp-quote (car pair)) (cdr pair) s t t)))
     s))
 
+(defun emacs-nxs-sleep-report--danish-date (value)
+  "Formatér Org-datoen VALUE som dag, dansk månedsnavn og år."
+  (if (string-match
+       "\\([0-9]\\{4\\}\\)-\\([0-9]\\{2\\}\\)-\\([0-9]\\{2\\}\\)"
+       (or value ""))
+      (let* ((year (string-to-number (match-string 1 value)))
+             (month (string-to-number (match-string 2 value)))
+             (day (string-to-number (match-string 3 value)))
+             (month-name
+              (nth (1- month)
+                   '("januar" "februar" "marts" "april" "maj" "juni"
+                     "juli" "august" "september" "oktober" "november"
+                     "december"))))
+        (format "%d. %s %d" day month-name year))
+    (if (emacs-nxs-sleep-report--blank-p value) "" value)))
+
+(defun emacs-nxs-sleep-report--medicine-report-rows (rows)
+  "Formatér datokolonne 2 og 6 i medicintabellens ROWS til rapporten."
+  (cons
+   '("Præparat" "købt" "pr/dag" "mod" "antal" "slut")
+   (mapcar
+    (lambda (row)
+      (list (nth 0 row)
+            (emacs-nxs-sleep-report--danish-date (nth 1 row))
+            (nth 2 row)
+            (nth 3 row)
+            (nth 4 row)
+            (emacs-nxs-sleep-report--danish-date (nth 5 row))))
+    (cl-remove-if
+     (lambda (row) (emacs-nxs-sleep-report--blank-p (nth 0 row)))
+     (cdr rows)))))
+
+(defun emacs-nxs-sleep-report--blood-pressure-report-rows (rows)
+  "Formatér datokolonne 1 i blodtryktabellens ROWS til rapporten."
+  (cons
+   '("Dato" "" "sys" "dia" "vægt")
+   (mapcar
+    (lambda (row)
+      (cons (emacs-nxs-sleep-report--danish-date (car row))
+            (cdr row)))
+    (cl-remove-if
+     (lambda (row)
+       (cl-every #'emacs-nxs-sleep-report--blank-p row))
+     (cdr rows)))))
+
 (defun emacs-nxs-sleep-report--write (file content)
   (make-directory (file-name-directory file) t)
   (with-temp-file file (insert content)))
@@ -170,7 +233,8 @@ Timer skal være 0-24, og minutter 0-59."
              fill draw header)
      (format "  dato  %s\n%s\n};\n" header data))))
 
-(defun emacs-nxs-sleep-report--generate (directory table-name rows)
+(defun emacs-nxs-sleep-report--generate
+    (directory table-name rows medicine-rows blood-pressure-rows)
   (let* ((out (expand-file-name emacs-nxs-sleep-report-output-directory directory))
          (period (emacs-nxs-sleep-report--period table-name))
          (usable (emacs-nxs-sleep-report--day-rows rows)))
@@ -194,6 +258,34 @@ Timer skal være 0-24, og minutter 0-59."
                      " & ")
           " \\\\"))
        usable "\n")
+      "\n"))
+
+    (emacs-nxs-sleep-report--write
+     (expand-file-name "medicine-table.tex" out)
+     (concat
+      (mapconcat
+       (lambda (row)
+         (concat
+          (mapconcat #'emacs-nxs-sleep-report--latex-escape
+                     row
+                     " & ")
+          " \\\\"))
+       (emacs-nxs-sleep-report--medicine-report-rows medicine-rows) "\n")
+      "\n"))
+
+    (emacs-nxs-sleep-report--write
+     (expand-file-name "blood-pressure-table.tex" out)
+     (concat
+      (mapconcat
+       (lambda (row)
+         (concat
+          (mapconcat #'emacs-nxs-sleep-report--latex-escape
+                     row
+                     " & ")
+          " \\\\"))
+       (emacs-nxs-sleep-report--blood-pressure-report-rows
+        blood-pressure-rows)
+       "\n")
       "\n"))
 
     (emacs-nxs-sleep-report--write
@@ -280,8 +372,15 @@ Timer skal være 0-24, og minutter 0-59."
   (save-buffer)
   (pcase-let* ((`(,name ,_header ,rows)
                 (emacs-nxs-sleep-report--find-table))
+               (medicine-rows
+                (emacs-nxs-sleep-report--find-named-table
+                 "Status-Medicin"))
+               (blood-pressure-rows
+                (emacs-nxs-sleep-report--find-named-table
+                 "Blodtryk"))
                (directory (file-name-directory buffer-file-name)))
-    (emacs-nxs-sleep-report--generate directory name rows)
+    (emacs-nxs-sleep-report--generate
+     directory name rows medicine-rows blood-pressure-rows)
     (emacs-nxs-sleep-report--compile directory)))
 
 (with-eval-after-load 'org
