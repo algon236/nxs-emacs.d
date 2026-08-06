@@ -261,19 +261,6 @@ Timer skal være 0-24, og minutter 0-59."
       "\n"))
 
     (emacs-nxs-sleep-report--write
-     (expand-file-name "medicine-table.tex" out)
-     (concat
-      (mapconcat
-       (lambda (row)
-         (concat
-          (mapconcat #'emacs-nxs-sleep-report--latex-escape
-                     row
-                     " & ")
-          " \\\\"))
-       (emacs-nxs-sleep-report--medicine-report-rows medicine-rows) "\n")
-      "\n"))
-
-    (emacs-nxs-sleep-report--write
      (expand-file-name "blood-pressure-table.tex" out)
      (concat
       (mapconcat
@@ -286,6 +273,19 @@ Timer skal være 0-24, og minutter 0-59."
        (emacs-nxs-sleep-report--blood-pressure-report-rows
         blood-pressure-rows)
        "\n")
+      "\n"))
+
+    (emacs-nxs-sleep-report--write
+     (expand-file-name "medicine-table.tex" out)
+     (concat
+      (mapconcat
+       (lambda (row)
+         (concat
+          (mapconcat #'emacs-nxs-sleep-report--latex-escape
+                     row
+                     " & ")
+          " \\\\"))
+       (emacs-nxs-sleep-report--medicine-report-rows medicine-rows) "\n")
       "\n"))
 
     (emacs-nxs-sleep-report--write
