@@ -66,6 +66,73 @@
       (perinf-core-meetings))
     meeting))
 
+;;;###autoload
+(defun perinf-meeting-edit (meeting-id)
+  "Interactively edit the basic details of MEETING-ID."
+  (interactive (list (perinf-meeting--select-meeting)))
+  (unless (and (boundp 'perinf-current-project) perinf-current-project)
+    (user-error "%s" (perinf-i18n 'home.no-project)))
+  (let* ((meeting
+          (seq-find
+           (lambda (candidate)
+             (equal (perinf-object-id candidate) meeting-id))
+           (perinf-storage-list 'meeting perinf-current-project)))
+         (_ (unless meeting
+              (signal 'perinf-object-not-found (list meeting-id))))
+         (properties (perinf-object-properties meeting))
+         (start-at (alist-get 'START_AT properties))
+         (finish-at (alist-get 'FINISH_AT properties))
+         (date-format-name (perinf-meeting--setting 'DATE_FORMAT))
+         (time-format-name (perinf-meeting--setting 'TIME_FORMAT))
+         (date-format (intern date-format-name))
+         (time-format (intern time-format-name))
+         (title
+          (read-string (perinf-i18n 'meeting.title-prompt)
+                       (perinf-object-title meeting)))
+         (date
+          (perinf-date-normalize
+           (read-string
+            (format "%s (%s): "
+                    (perinf-i18n 'meeting.date-prompt)
+                    (perinf-i18n
+                     (intern (format "setting.%s" date-format-name))))
+            (perinf-date-format (substring start-at 0 10) date-format))
+           date-format))
+         (start
+          (perinf-time-normalize
+           (read-string
+            (format "%s (%s): "
+                    (perinf-i18n 'meeting.start-prompt)
+                    (perinf-i18n
+                     (intern (format "setting.%s" time-format-name))))
+            (perinf-time-format start-at time-format))
+           time-format))
+         (finish
+          (perinf-time-normalize
+           (read-string
+            (format "%s (%s): "
+                    (perinf-i18n 'meeting.finish-prompt)
+                    (perinf-i18n
+                     (intern (format "setting.%s" time-format-name))))
+            (perinf-time-format finish-at time-format))
+           time-format))
+         (location
+          (read-string (perinf-i18n 'meeting.location-prompt)
+                       (or (alist-get 'LOCATION properties) "")))
+         (updated
+          (perinf-storage-update-meeting
+           meeting-id
+           `((title . ,title)
+             (date . ,date)
+             (start-time . ,start)
+             (finish-time . ,finish)
+             (location . ,location))
+           perinf-current-project)))
+    (message "%s" (perinf-i18n 'meeting.updated))
+    (if (fboundp 'perinf-core-show-object)
+        (perinf-core-show-object updated)
+      updated)))
+
 (defun perinf-meeting--select-meeting ()
   "Prompt for a meeting and return its ID."
   (let* ((meetings

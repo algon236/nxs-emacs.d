@@ -66,6 +66,9 @@
 (defalias 'perinf-create-meeting #'perinf-meeting-create)
 
 ;;;###autoload
+(defalias 'perinf-edit-meeting #'perinf-meeting-edit)
+
+;;;###autoload
 (defalias 'perinf-create-person #'perinf-person-create)
 
 ;;;###autoload

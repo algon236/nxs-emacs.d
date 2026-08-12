@@ -152,6 +152,38 @@ Timer skal være 0-24, og minutter 0-59."
         (format "%d. %s %d" day month-name year))
     (if (emacs-nxs-sleep-report--blank-p value) "" value)))
 
+(defun emacs-nxs-sleep-report--date-iso (value)
+  "Returnér datoen i VALUE som YYYY-MM-DD, eller nil."
+  (when (string-match
+         "\\([0-9]\\{4\\}\\)-\\([0-9]\\{2\\}\\)-\\([0-9]\\{2\\}\\)"
+         (or value ""))
+    (match-string 0 value)))
+
+(defun emacs-nxs-sleep-report--daily-note-id (date)
+  "Returnér ID for org-roam-dagsnoten på DATE.
+Returnér symbolet `file' hvis noten findes uden ID, og ellers nil.
+DATE skal have formatet YYYY-MM-DD."
+  (when date
+    (let* ((roam-directory
+            (if (boundp 'org-roam-directory)
+                org-roam-directory
+              (expand-file-name "~/org/roam/")))
+           (dailies-directory
+            (if (boundp 'org-roam-dailies-directory)
+                org-roam-dailies-directory
+              "dagligt/"))
+           (file (expand-file-name
+                  (concat date ".org")
+                  (expand-file-name dailies-directory roam-directory))))
+      (when (file-readable-p file)
+        (with-temp-buffer
+          (insert-file-contents file)
+          (goto-char (point-min))
+          (if (re-search-forward
+               "^[ \t]*:ID:[ \t]+\\([^ \t\r\n]+\\)[ \t]*$" nil t)
+              (match-string-no-properties 1)
+            'file))))))
+
 (defun emacs-nxs-sleep-report--medicine-report-rows (rows)
   "Formatér datokolonne 2 og 6 i medicintabellens ROWS til rapporten."
   (cons
@@ -169,17 +201,45 @@ Timer skal være 0-24, og minutter 0-59."
      (cdr rows)))))
 
 (defun emacs-nxs-sleep-report--blood-pressure-report-rows (rows)
-  "Formatér datokolonne 1 i blodtryktabellens ROWS til rapporten."
-  (cons
-   '("Dato" "" "sys" "dia" "vægt")
-   (mapcar
+  "Formatér blodtryksdata og journal-ID'er i ROWS til rapporten.
+Kildens kolonner er dato, hjælpefelt, vægt og derefter sys/dia for
+morgen, middag og aften."
+  (mapcar
+   (lambda (row)
+     (let ((date (emacs-nxs-sleep-report--date-iso (car row))))
+       (list (emacs-nxs-sleep-report--danish-date (car row))
+             (nth 3 row) (nth 4 row)
+             (nth 5 row) (nth 6 row)
+             (nth 7 row) (nth 8 row)
+             (emacs-nxs-sleep-report--daily-note-id date))))
+   (cl-remove-if
     (lambda (row)
-      (cons (emacs-nxs-sleep-report--danish-date (car row))
-            (cdr row)))
-    (cl-remove-if
-     (lambda (row)
-       (cl-every #'emacs-nxs-sleep-report--blank-p row))
-     (cdr rows)))))
+      (or (emacs-nxs-sleep-report--blank-p (car row))
+          (cl-every #'emacs-nxs-sleep-report--blank-p (cdr row))))
+    (cdr rows))))
+
+(defun emacs-nxs-sleep-report--blood-pressure-table (rows)
+  "Lav LaTeX-rækker med todelt hoved og eventuelle id:-links fra ROWS."
+  (concat
+   "\\SetCell[r=2]{c} Dato & \\SetCell[c=2]{c} Morgen & & "
+   "\\SetCell[c=2]{c} Middag & & \\SetCell[c=2]{c} Aften & & "
+   "\\SetCell[r=2]{c} Journal \\\\\n"
+   " & sys & dia & sys & dia & sys & dia & \\\\\n"
+   (mapconcat
+    (lambda (row)
+      (let ((values (butlast row))
+            (journal-id (car (last row))))
+        (concat
+         (mapconcat #'emacs-nxs-sleep-report--latex-escape values " & ")
+         " & "
+         (if (stringp journal-id)
+             (format "\\href{id:%s}{Journal}"
+                     (emacs-nxs-sleep-report--latex-escape journal-id))
+           (if journal-id "Journal" ""))
+         " \\\\")))
+    (emacs-nxs-sleep-report--blood-pressure-report-rows rows)
+    "\n")
+   "\n"))
 
 (defun emacs-nxs-sleep-report--write (file content)
   (make-directory (file-name-directory file) t)
@@ -261,6 +321,10 @@ Timer skal være 0-24, og minutter 0-59."
       "\n"))
 
     (emacs-nxs-sleep-report--write
+     (expand-file-name "blood-pressure-table.tex" out)
+     (emacs-nxs-sleep-report--blood-pressure-table blood-pressure-rows))
+
+    (emacs-nxs-sleep-report--write
      (expand-file-name "medicine-table.tex" out)
      (concat
       (mapconcat
@@ -271,21 +335,6 @@ Timer skal være 0-24, og minutter 0-59."
                      " & ")
           " \\\\"))
        (emacs-nxs-sleep-report--medicine-report-rows medicine-rows) "\n")
-      "\n"))
-
-    (emacs-nxs-sleep-report--write
-     (expand-file-name "blood-pressure-table.tex" out)
-     (concat
-      (mapconcat
-       (lambda (row)
-         (concat
-          (mapconcat #'emacs-nxs-sleep-report--latex-escape
-                     row
-                     " & ")
-          " \\\\"))
-       (emacs-nxs-sleep-report--blood-pressure-report-rows
-        blood-pressure-rows)
-       "\n")
       "\n"))
 
     (emacs-nxs-sleep-report--write

@@ -167,6 +167,23 @@ Keyboard button actions run COMMAND immediately."
   (perinf-i18n
    (intern (format "status.%s" (perinf-object-status task)))))
 
+(defun perinf-core--archived-meeting-p (meeting)
+  "Return non-nil when MEETING belongs in the archive."
+  (memq (perinf-object-status meeting) '(held cancelled)))
+
+(defun perinf-core--active-meetings (meetings)
+  "Return non-archived MEETINGS."
+  (seq-remove #'perinf-core--archived-meeting-p meetings))
+
+(defun perinf-core--archived-meetings (meetings)
+  "Return archived MEETINGS in reverse chronological order."
+  (sort
+   (seq-filter #'perinf-core--archived-meeting-p meetings)
+   (lambda (left right)
+     (string>
+      (or (alist-get 'START_AT (perinf-object-properties left)) "")
+      (or (alist-get 'START_AT (perinf-object-properties right)) "")))))
+
 (defun perinf-core--render-dashboard-summary
     (tasks meetings people transcripts minutes)
   "Insert a dashboard summary for the supplied core object collections."
@@ -261,7 +278,8 @@ Keyboard button actions run COMMAND immediately."
   (if perinf-current-project
       (let ((tasks (perinf-storage-list 'task perinf-current-project))
             (meetings
-             (perinf-storage-list 'meeting perinf-current-project))
+             (perinf-core--active-meetings
+              (perinf-storage-list 'meeting perinf-current-project)))
             (people (perinf-storage-list 'person perinf-current-project))
             (transcripts
              (perinf-storage-list 'transcript perinf-current-project))
@@ -494,7 +512,8 @@ Keyboard button actions run COMMAND immediately."
            (time-format
             (intern (perinf-core--metadata-value 'TIME_FORMAT)))
            (meetings
-            (perinf-storage-list 'meeting perinf-current-project)))
+            (perinf-core--active-meetings
+             (perinf-storage-list 'meeting perinf-current-project))))
       (if meetings
           (progn
             (insert (format "%s: %d\n\n"
@@ -535,7 +554,15 @@ Keyboard button actions run COMMAND immediately."
                         (perinf-i18n
                          (intern
                           (format "status.%s"
-                                  (perinf-object-status meeting)))))
+                                 (perinf-object-status meeting)))))
+                (insert "   ")
+                (perinf-core--insert-button
+                 (perinf-i18n 'meeting.edit)
+                 (lambda (button)
+                   (perinf-core--call-function-from-button
+                    #'perinf-meeting-edit
+                    (button-get button 'perinf-meeting-id)))
+                 'perinf-meeting-id (perinf-object-id meeting))
                 (insert "\n  "
                         (format "%s: %d"
                                 (perinf-i18n 'meeting.participants)
@@ -603,6 +630,9 @@ Keyboard button actions run COMMAND immediately."
       (insert (perinf-i18n 'home.no-project) "\n")
     (let ((people
            (perinf-storage-list 'person perinf-current-project))
+          (archived-meetings
+           (perinf-core--archived-meetings
+            (perinf-storage-list 'meeting perinf-current-project)))
           (transcripts
            (perinf-storage-list 'transcript perinf-current-project))
           (minutes
@@ -611,7 +641,36 @@ Keyboard button actions run COMMAND immediately."
            (perinf-storage-list 'decision perinf-current-project))
           (contexts
            (perinf-storage-list 'context perinf-current-project)))
-      (insert (propertize (perinf-i18n 'person.register)
+      (insert (propertize (perinf-i18n 'records.meetings) 'face 'bold)
+              "\n\n")
+      (if archived-meetings
+          (dolist (meeting archived-meetings)
+            (let* ((properties (perinf-object-properties meeting))
+                   (start-at (alist-get 'START_AT properties))
+                   (date (and start-at (substring start-at 0 10))))
+              (insert "• ")
+              (perinf-core--insert-button
+               (perinf-object-title meeting)
+               (lambda (button)
+                 (perinf-core-show-object
+                  (button-get button 'perinf-object)))
+               'perinf-object meeting
+               'face 'bold)
+              (when date
+                (insert "  —  "
+                        (perinf-date-format
+                         date
+                         (intern
+                          (perinf-core--metadata-value 'DATE_FORMAT)))))
+              (insert "  —  "
+                      (perinf-i18n
+                       (intern
+                        (format "status.%s"
+                                (perinf-object-status meeting))))
+                      "\n")))
+        (insert (perinf-i18n 'records.no-meetings) "\n"))
+      (insert "\n"
+              (propertize (perinf-i18n 'person.register)
                           'face 'bold)
               "\n\n")
       (if people
@@ -725,7 +784,10 @@ Keyboard button actions run COMMAND immediately."
   "Return to the list containing OBJECT."
   (pcase (perinf-object-type object)
     ('task (perinf-core-work))
-    ('meeting (perinf-core-meetings))
+    ('meeting
+     (if (perinf-core--archived-meeting-p object)
+         (perinf-core-records)
+       (perinf-core-meetings)))
     ('person (perinf-core-records))
     ('decision (perinf-core-records))
     ('context (perinf-core-records))
@@ -1224,6 +1286,14 @@ Keyboard button actions run COMMAND immediately."
                     'MEETING_ID (perinf-object-properties task))
                    (perinf-object-id object)))
                 (perinf-storage-list 'task perinf-current-project))))
+         (perinf-core--insert-button
+          (perinf-i18n 'meeting.edit)
+          (lambda (button)
+            (perinf-core--call-function-from-button
+             #'perinf-meeting-edit
+             (button-get button 'perinf-meeting-id)))
+          'perinf-meeting-id (perinf-object-id object))
+         (insert "\n\n")
          (pcase (perinf-object-status object)
            ('planned
             (perinf-core--insert-button
@@ -1250,7 +1320,8 @@ Keyboard button actions run COMMAND immediately."
             (perinf-core--insert-button
              (perinf-i18n 'meeting.cancel)
              (lambda (button)
-               (perinf-meeting-cancel
+               (perinf-core--call-function-from-button
+                #'perinf-meeting-cancel
                 (button-get button 'perinf-meeting-id)))
              'perinf-meeting-id (perinf-object-id object))
             (insert "\n\n"))
@@ -1265,7 +1336,8 @@ Keyboard button actions run COMMAND immediately."
             (perinf-core--insert-button
              (perinf-i18n 'meeting.cancel)
              (lambda (button)
-               (perinf-meeting-cancel
+               (perinf-core--call-function-from-button
+                #'perinf-meeting-cancel
                 (button-get button 'perinf-meeting-id)))
              'perinf-meeting-id (perinf-object-id object))
             (insert "\n\n"))
