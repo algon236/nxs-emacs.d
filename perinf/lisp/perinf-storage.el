@@ -407,6 +407,71 @@ This implementation supports controlled task status changes."
           (lambda (object) (equal (perinf-object-id object) id))
           (perinf-storage-list 'task project)))))
 
+(defun perinf-storage-update-meeting
+    (meeting-id data &optional project-directory)
+  "Update MEETING-ID from DATA in PROJECT-DIRECTORY.
+DATA may contain `title', `date', `start-time', `finish-time', and `location'.
+The meeting ID, status, linked children, and imported artifacts are preserved."
+  (let* ((project
+          (or project-directory
+              (signal 'perinf-storage-error
+                      '("No project directory supplied"))))
+         (meeting
+          (seq-find
+           (lambda (candidate)
+             (equal (perinf-object-id candidate) meeting-id))
+           (perinf-storage-list 'meeting project)))
+         (title (perinf-storage--safe-line
+                 (or (alist-get 'title data) "")))
+         (date (alist-get 'date data))
+         (start-time (alist-get 'start-time data))
+         (finish-time (alist-get 'finish-time data))
+         (location (perinf-storage--safe-line
+                    (or (alist-get 'location data) "")))
+         (start-at (and date start-time
+                        (perinf-storage--datetime date start-time)))
+         (finish-at (and date finish-time
+                         (perinf-storage--datetime date finish-time)))
+         (file (and meeting (perinf-object-file meeting))))
+    (unless meeting
+      (signal 'perinf-object-not-found (list meeting-id)))
+    (when (string-empty-p title)
+      (user-error "Meeting title must not be empty"))
+    (unless (and date start-time)
+      (user-error "Meeting date and start time must not be empty"))
+    (when (and finish-at (not (string< start-at finish-at)))
+      (user-error "Meeting finish time must be after start time"))
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Meeting storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id meeting-id)
+        (signal 'perinf-object-not-found (list meeting-id)))
+      (unless (equal (org-entry-get nil "PERINF_TYPE") "meeting")
+        (signal 'perinf-storage-error
+                (list (format "Object is not a meeting: %s" meeting-id))))
+      (org-edit-headline title)
+      (org-entry-put nil "START_AT" start-at)
+      (if finish-at
+          (org-entry-put nil "FINISH_AT" finish-at)
+        (org-entry-delete nil "FINISH_AT"))
+      (org-entry-put nil "LOCATION" location)
+      (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now))
+      (save-excursion
+        (goto-char (point-min))
+        (when (re-search-forward "^#\\+title:.*$" nil t)
+          (replace-match (concat "#+title: " title) t t))
+        (goto-char (point-min))
+        (when (re-search-forward "^#\\+date:.*$" nil t)
+          (replace-match (concat "#+date: " date) t t)))
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find
+     (lambda (candidate)
+       (equal (perinf-object-id candidate) meeting-id))
+     (perinf-storage-list 'meeting project))))
+
 (defun perinf-storage-person-references (person-id &optional project-directory)
   "Return tasks and meetings that refer to PERSON-ID in PROJECT-DIRECTORY."
   (let* ((project
