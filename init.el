@@ -3513,6 +3513,62 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
 
 
 ;;; │ ORG-ROAM
+(defconst emacs-nxs/org-roam-daily-index-id
+  "CB604D08-03A6-4E32-89A8-47E1E34F48B0"
+  "Permanent Org ID for dagligt/Daglige.org.")
+
+(defun emacs-nxs/org-roam-daily-file-p (file)
+  "Return non-nil when FILE is a dated Org-roam daily file."
+  (and file
+       (file-in-directory-p
+        file
+        (expand-file-name org-roam-dailies-directory org-roam-directory))
+       (string-match-p
+        "\\`[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\.org\\'"
+        (file-name-nondirectory file))))
+
+(defun emacs-nxs/org-roam-update-daily-index ()
+  "Add the captured daily note to Daglige.org, without duplicates."
+  (when (and (org-roam-capture-p) (not org-note-abort))
+    (when-let* ((daily-buffer (org-capture-get :buffer))
+                (daily-file (buffer-file-name daily-buffer))
+                ((emacs-nxs/org-roam-daily-file-p daily-file))
+                (daily-id (org-roam-capture--get :id))
+                (base (file-name-base daily-file))
+                ((string-match
+                  "\\`\\([0-9]\\{4\\}\\)-\\([0-9]\\{2\\}\\)-\\([0-9]\\{2\\}\\)\\'"
+                  base)))
+      (let* ((index-file
+              (expand-file-name "Daglige.org"
+                                (expand-file-name org-roam-dailies-directory
+                                                  org-roam-directory)))
+             (existing-buffer (find-buffer-visiting index-file))
+             (index-buffer (or existing-buffer
+                               (find-file-noselect index-file)))
+             (was-modified (and existing-buffer
+                                (buffer-modified-p existing-buffer)))
+             (date-title (format "%s-%s-%s"
+                                 (match-string 3 base)
+                                 (match-string 2 base)
+                                 (match-string 1 base)))
+             (link (format "[[id:%s][%s]]" daily-id date-title)))
+        (with-current-buffer index-buffer
+          (save-excursion
+            (goto-char (point-min))
+            (unless (search-forward (format "[[id:%s]" daily-id) nil t)
+              (goto-char (point-min))
+              (if (re-search-forward "^\\* Dage[ \t]*$" nil t)
+                  (forward-line 1)
+                (goto-char (point-max))
+                (unless (bolp) (insert "\n"))
+                (insert "\n* Dage\n"))
+              (insert "- " link "\n")
+              (if was-modified
+                  (message
+                   "Link til %s er indsat; gem Daglige.org for at bevare det"
+                   date-title)
+                (save-buffer)))))))))
+
 (use-package org-roam
   :ensure t
   :after org
@@ -3538,7 +3594,7 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
    '(("d" "Daglig note" entry "* %<%H:%M> %?"
       :target
       (file+head "%<%Y-%m-%d>.org"
-                 "#+title: %<%d-%m-%Y>\n\n"))))
+                 "#+title: %<%d-%m-%Y>\n\n[[id:CB604D08-03A6-4E32-89A8-47E1E34F48B0][Daglige noter]]\n\n"))))
   :bind
   (("C-c n f" . org-roam-node-find)
    ("C-c n i" . org-roam-node-insert)
@@ -3547,6 +3603,8 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
    ("C-c n d" . org-roam-dailies-capture-today)
    ("C-c n g" . org-roam-graph))
   :config
+  (add-hook 'org-capture-after-finalize-hook
+            #'emacs-nxs/org-roam-update-daily-index)
   (org-roam-db-autosync-mode 1))
 
 (use-package org-roam-ui
