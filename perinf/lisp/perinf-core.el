@@ -167,6 +167,33 @@ Keyboard button actions run COMMAND immediately."
   (perinf-i18n
    (intern (format "status.%s" (perinf-object-status task)))))
 
+(defun perinf-core--completed-task-p (task)
+  "Return non-nil when TASK belongs in the archive."
+  (eq (perinf-object-status task) 'completed))
+
+(defun perinf-core--active-tasks (tasks)
+  "Return TASKS that do not belong in the archive."
+  (seq-remove
+   (lambda (task)
+     (memq (perinf-object-status task) '(completed cancelled)))
+   tasks))
+
+(defun perinf-core--completed-tasks (tasks)
+  "Return completed TASKS in work order."
+  (perinf-core--sort-tasks
+   (seq-filter #'perinf-core--completed-task-p tasks)))
+
+(defun perinf-core--cancelled-objects (&rest collections)
+  "Return cancelled objects from COLLECTIONS, sorted by title."
+  (sort
+   (seq-filter
+    (lambda (object)
+      (eq (perinf-object-status object) 'cancelled))
+    (apply #'append collections))
+   (lambda (left right)
+     (string-lessp (perinf-object-title left)
+                   (perinf-object-title right)))))
+
 (defun perinf-core--archived-meeting-p (meeting)
   "Return non-nil when MEETING belongs in the archive."
   (memq (perinf-object-status meeting) '(held cancelled)))
@@ -176,9 +203,12 @@ Keyboard button actions run COMMAND immediately."
   (seq-remove #'perinf-core--archived-meeting-p meetings))
 
 (defun perinf-core--archived-meetings (meetings)
-  "Return archived MEETINGS in reverse chronological order."
+  "Return held MEETINGS in reverse chronological order."
   (sort
-   (seq-filter #'perinf-core--archived-meeting-p meetings)
+   (seq-filter
+    (lambda (meeting)
+      (eq (perinf-object-status meeting) 'held))
+    meetings)
    (lambda (left right)
      (string>
       (or (alist-get 'START_AT (perinf-object-properties left)) "")
@@ -367,7 +397,8 @@ Keyboard button actions run COMMAND immediately."
             (intern (perinf-core--metadata-value 'TIME_FORMAT)))
            (tasks
             (perinf-core--sort-tasks
-             (perinf-storage-list 'task perinf-current-project)))
+             (perinf-core--active-tasks
+              (perinf-storage-list 'task perinf-current-project))))
            (people (perinf-storage-list 'person perinf-current-project))
            (contexts (perinf-storage-list 'context perinf-current-project))
            (approvals
@@ -628,11 +659,16 @@ Keyboard button actions run COMMAND immediately."
   (insert "\n\n")
   (if (not perinf-current-project)
       (insert (perinf-i18n 'home.no-project) "\n")
-    (let ((people
-           (perinf-storage-list 'person perinf-current-project))
+    (let* ((tasks (perinf-storage-list 'task perinf-current-project))
+           (meetings (perinf-storage-list 'meeting perinf-current-project))
+           (people
+            (perinf-storage-list 'person perinf-current-project))
+          (completed-tasks
+           (perinf-core--completed-tasks tasks))
           (archived-meetings
-           (perinf-core--archived-meetings
-            (perinf-storage-list 'meeting perinf-current-project)))
+           (perinf-core--archived-meetings meetings))
+          (cancelled-objects
+           (perinf-core--cancelled-objects tasks meetings))
           (transcripts
            (perinf-storage-list 'transcript perinf-current-project))
           (minutes
@@ -641,6 +677,21 @@ Keyboard button actions run COMMAND immediately."
            (perinf-storage-list 'decision perinf-current-project))
           (contexts
            (perinf-storage-list 'context perinf-current-project)))
+      (insert (propertize (perinf-i18n 'records.tasks) 'face 'bold)
+              "\n\n")
+      (if completed-tasks
+          (dolist (task completed-tasks)
+            (insert "• ")
+            (perinf-core--insert-button
+             (perinf-object-title task)
+             (lambda (button)
+               (perinf-core-show-object
+                (button-get button 'perinf-object)))
+             'perinf-object task
+             'face 'bold)
+            (insert "  —  " (perinf-core--task-status-label task) "\n"))
+        (insert (perinf-i18n 'records.no-tasks) "\n"))
+      (insert "\n")
       (insert (propertize (perinf-i18n 'records.meetings) 'face 'bold)
               "\n\n")
       (if archived-meetings
@@ -669,6 +720,26 @@ Keyboard button actions run COMMAND immediately."
                                 (perinf-object-status meeting))))
                       "\n")))
         (insert (perinf-i18n 'records.no-meetings) "\n"))
+      (insert "\n"
+              (propertize (perinf-i18n 'records.cancelled) 'face 'bold)
+              "\n\n")
+      (if cancelled-objects
+          (dolist (object cancelled-objects)
+            (insert "• ")
+            (perinf-core--insert-button
+             (perinf-object-title object)
+             (lambda (button)
+               (perinf-core-show-object
+                (button-get button 'perinf-object)))
+             'perinf-object object
+             'face 'bold)
+            (insert "  —  "
+                    (perinf-i18n
+                     (intern (format "object.%s" (perinf-object-type object))))
+                    "  —  "
+                    (perinf-i18n 'status.cancelled)
+                    "\n"))
+        (insert (perinf-i18n 'records.no-cancelled) "\n"))
       (insert "\n"
               (propertize (perinf-i18n 'person.register)
                           'face 'bold)
