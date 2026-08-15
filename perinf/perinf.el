@@ -3,7 +3,7 @@
 ;; Copyright (C) 2026 Personal Work and Information System contributors
 
 ;; Author: Personal Work and Information System contributors
-;; Version: 0.1.0
+;; Version: 1.0.0
 ;; Package-Requires: ((emacs "29.1") (org "9.6"))
 ;; Keywords: outlines, calendar, convenience
 ;; URL: https://example.invalid/perinf

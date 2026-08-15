@@ -19,7 +19,7 @@
 (require 'perinf-properties)
 (require 'perinf-statuses)
 
-(defconst perinf-version "0.1.0"
+(defconst perinf-version "1.0.0"
   "Current Personal Work and Information System application version.")
 
 (defvar perinf-current-project nil
