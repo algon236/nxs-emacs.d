@@ -53,6 +53,18 @@
 (defalias 'perinf-complete-task #'perinf-task-complete)
 
 ;;;###autoload
+(defun perinf-start-task-timer (task-id)
+  "Start TASK-ID's work timer."
+  (interactive (list (perinf-task--select-timer-task t)))
+  (perinf-task-toggle-timer task-id t))
+
+;;;###autoload
+(defun perinf-stop-task-timer (task-id)
+  "Stop TASK-ID's work timer."
+  (interactive (list (perinf-task--select-timer-task nil)))
+  (perinf-task-toggle-timer task-id nil))
+
+;;;###autoload
 (defalias 'perinf-create-task-from-decision
   #'perinf-task-create-from-decision)
 

@@ -938,6 +938,8 @@ Keyboard button actions run COMMAND immediately."
                      (perinf-storage-list
                       'person perinf-current-project))))
               (context-id (alist-get 'CONTEXT_ID properties))
+              (timer-started-at
+               (alist-get 'TASK_TIMER_STARTED_AT properties))
               (context
                (and context-id
                     (seq-find
@@ -990,6 +992,26 @@ Keyboard button actions run COMMAND immediately."
               (perinf-core-show-object
                (button-get button 'perinf-object)))
             'perinf-object context))
+         (insert "\n")
+         (perinf-core--detail-value
+          (perinf-i18n 'task.work-time)
+          (concat
+           (perinf-task-format-work-time
+            (perinf-task-total-work-seconds object))
+           (if timer-started-at
+               (concat " " (perinf-i18n 'task.timer-running))
+             "")))
+         (when (eq (perinf-object-status object) 'active)
+           (perinf-core--insert-button
+            (perinf-i18n (if timer-started-at
+                             'action.stop-task-timer
+                           'action.start-task-timer))
+            (lambda (button)
+              (perinf-task-toggle-timer
+               (button-get button 'perinf-task-id)
+               (button-get button 'perinf-task-timer-start-p)))
+            'perinf-task-id (perinf-object-id object)
+            'perinf-task-timer-start-p (not timer-started-at)))
          (insert "\n\n")
          (dolist
              (action

@@ -150,6 +150,31 @@
            choices nil t)
           choices))))
 
+(defun perinf-task--select-timer-task (start-p)
+  "Prompt for a task whose timer can be started or stopped per START-P."
+  (let* ((tasks
+          (seq-filter
+           (lambda (task)
+             (and (eq (perinf-object-status task) 'active)
+                  (if start-p
+                      (not (alist-get 'TASK_TIMER_STARTED_AT
+                                      (perinf-object-properties task)))
+                    (alist-get 'TASK_TIMER_STARTED_AT
+                               (perinf-object-properties task)))))
+           (perinf-storage-list 'task perinf-current-project)))
+         (choices
+          (mapcar (lambda (task)
+                    (cons (perinf-object-title task)
+                          (perinf-object-id task)))
+                  tasks)))
+    (unless choices
+      (user-error "%s" (perinf-i18n (if start-p
+                                        'task.no-startable-timer
+                                      'task.no-running-timer))))
+    (cdr (assoc (completing-read (perinf-i18n 'task.select-prompt)
+                                 choices nil t)
+                choices))))
+
 ;;;###autoload
 (defun perinf-task-complete (&optional task-id)
   "Mark TASK-ID as completed through the storage API."
@@ -180,6 +205,40 @@
              (perinf-i18n (intern (format "task.%s" status))))
     (when (fboundp 'perinf-core-work)
       (perinf-core-work))))
+
+(defun perinf-task-format-work-time (seconds)
+  "Format whole SECONDS as hours, minutes, and seconds."
+  (let* ((total (max 0 (or seconds 0)))
+         (hours (/ total 3600))
+         (minutes (/ (% total 3600) 60))
+         (remaining (% total 60)))
+    (format "%d:%02d:%02d" hours minutes remaining)))
+
+(defun perinf-task-total-work-seconds (task &optional now)
+  "Return TASK's accumulated work seconds, including its running interval."
+  (let* ((properties (perinf-object-properties task))
+         (stored (string-to-number
+                  (or (alist-get 'TASK_WORK_SECONDS properties) "0")))
+         (started-at (alist-get 'TASK_TIMER_STARTED_AT properties)))
+    (+ stored
+       (if started-at
+           (max 0 (truncate
+                   (float-time
+                    (time-subtract (or now (current-time))
+                                   (date-to-time started-at)))))
+         0))))
+
+(defun perinf-task-toggle-timer (task-id start-p)
+  "Start or stop TASK-ID's work timer according to START-P."
+  (unless (and (boundp 'perinf-current-project) perinf-current-project)
+    (user-error "%s" (perinf-i18n 'home.no-project)))
+  (if start-p
+      (perinf-storage-start-task-timer task-id perinf-current-project)
+    (perinf-storage-stop-task-timer task-id perinf-current-project))
+  (message "%s" (perinf-i18n (if start-p 'task.timer-started
+                                'task.timer-stopped)))
+  (when (fboundp 'perinf-core-work)
+    (perinf-core-work)))
 
 (provide 'perinf-task)
 
