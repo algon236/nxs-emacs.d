@@ -351,6 +351,29 @@ Object persistence is intentionally unavailable in the bootstrap milestone."
       (goto-char found))
     found))
 
+(defun perinf-storage--task-work-seconds-at-point ()
+  "Return the stored whole work seconds for the task at point."
+  (let ((value (org-entry-get nil "TASK_WORK_SECONDS")))
+    (if (and value (string-match-p "\\`[0-9]+\\'" value))
+        (string-to-number value)
+      0)))
+
+(defun perinf-storage--stop-task-timer-at-point (&optional stopped-at)
+  "Stop the task timer at point at STOPPED-AT and return total seconds."
+  (let ((started-at (org-entry-get nil "TASK_TIMER_STARTED_AT")))
+    (unless started-at
+      (user-error "Task timer is not running"))
+    (let* ((finish (or stopped-at (current-time)))
+           (elapsed (max 0 (truncate
+                            (float-time
+                             (time-subtract finish
+                                            (date-to-time started-at))))))
+           (total (+ (perinf-storage--task-work-seconds-at-point) elapsed)))
+      (org-entry-put nil "TASK_WORK_SECONDS" (number-to-string total))
+      (org-entry-delete nil "TASK_TIMER_STARTED_AT")
+      (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now))
+      total)))
+
 (defun perinf-storage-update (id changes &optional project-directory)
   "Apply CHANGES to object ID in PROJECT-DIRECTORY.
 This implementation supports controlled task status changes."
@@ -387,6 +410,8 @@ This implementation supports controlled task status changes."
         (unless (memq new-status allowed)
           (user-error "Invalid task status transition: %s to %s"
                       current-status new-status))
+        (when (org-entry-get nil "TASK_TIMER_STARTED_AT")
+          (perinf-storage--stop-task-timer-at-point))
         (let ((org-log-done nil)
               (org-log-into-drawer nil))
           (org-todo (if (eq new-status 'completed) "DONE" "TODO"))
@@ -406,6 +431,50 @@ This implementation supports controlled task status changes."
     (car (seq-filter
           (lambda (object) (equal (perinf-object-id object) id))
           (perinf-storage-list 'task project)))))
+
+(defun perinf-storage-start-task-timer (id &optional project-directory)
+  "Start the work timer for active task ID in PROJECT-DIRECTORY."
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/tasks.org" project)))
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Task storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id id)
+        (signal 'perinf-object-not-found (list id)))
+      (unless (equal (org-entry-get nil "PERINF_STATUS") "active")
+        (user-error "Task must be active before its timer can start"))
+      (when (org-entry-get nil "TASK_TIMER_STARTED_AT")
+        (user-error "Task timer is already running"))
+      (let ((now (perinf-storage--iso-now)))
+        (org-entry-put nil "TASK_TIMER_STARTED_AT" now)
+        (org-entry-put nil "MODIFIED_AT" now))
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find (lambda (object) (equal (perinf-object-id object) id))
+              (perinf-storage-list 'task project))))
+
+(defun perinf-storage-stop-task-timer (id &optional project-directory)
+  "Stop the work timer for task ID in PROJECT-DIRECTORY and add its time."
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/tasks.org" project)))
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Task storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id id)
+        (signal 'perinf-object-not-found (list id)))
+      (perinf-storage--stop-task-timer-at-point)
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find (lambda (object) (equal (perinf-object-id object) id))
+              (perinf-storage-list 'task project))))
 
 (defun perinf-storage-update-meeting
     (meeting-id data &optional project-directory)
@@ -595,7 +664,11 @@ Signal an error when tasks or meetings still refer to the person."
                       (ASSIGNEE_ID . ,(org-entry-get nil "ASSIGNEE_ID"))
                       (MEETING_ID . ,(org-entry-get nil "MEETING_ID"))
                       (MINUTES_ID . ,(org-entry-get nil "MINUTES_ID"))
-                      (CONTEXT_ID . ,(org-entry-get nil "CONTEXT_ID")))
+                      (CONTEXT_ID . ,(org-entry-get nil "CONTEXT_ID"))
+                      (TASK_TIMER_STARTED_AT
+                       . ,(org-entry-get nil "TASK_TIMER_STARTED_AT"))
+                      (TASK_WORK_SECONDS
+                       . ,(org-entry-get nil "TASK_WORK_SECONDS")))
                     :file file
                     :position (point))
                    objects))))))

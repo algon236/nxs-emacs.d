@@ -3,7 +3,7 @@
 ;; Copyright (C) 2026 Personal Work and Information System contributors
 
 ;; Author: Personal Work and Information System contributors
-;; Version: 0.1.0
+;; Version: 1.0.0
 ;; Package-Requires: ((emacs "29.1") (org "9.6"))
 ;; Keywords: outlines, calendar, convenience
 ;; URL: https://example.invalid/perinf
@@ -51,6 +51,18 @@
 
 ;;;###autoload
 (defalias 'perinf-complete-task #'perinf-task-complete)
+
+;;;###autoload
+(defun perinf-start-task-timer (task-id)
+  "Start TASK-ID's work timer."
+  (interactive (list (perinf-task--select-timer-task t)))
+  (perinf-task-toggle-timer task-id t))
+
+;;;###autoload
+(defun perinf-stop-task-timer (task-id)
+  "Stop TASK-ID's work timer."
+  (interactive (list (perinf-task--select-timer-task nil)))
+  (perinf-task-toggle-timer task-id nil))
 
 ;;;###autoload
 (defalias 'perinf-create-task-from-decision

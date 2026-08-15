@@ -31,6 +31,8 @@
     (MINUTES_STATUS :type enum :access controlled :required nil)
     (ACTUAL_START_AT :type datetime :access system :required nil)
     (ACTUAL_FINISH_AT :type datetime :access system :required nil)
+    (TASK_TIMER_STARTED_AT :type datetime :access controlled :required nil)
+    (TASK_WORK_SECONDS :type integer :access controlled :required nil)
     (DECIDED_ON :type date :access user :required nil)
     (RATIONALE :type string :access user :required nil)
     (DECISION_ID :type identifier :access controlled :required nil)
