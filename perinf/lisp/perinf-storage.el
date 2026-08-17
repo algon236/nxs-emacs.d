@@ -358,6 +358,117 @@ Object persistence is intentionally unavailable in the bootstrap milestone."
         (string-to-number value)
       0)))
 
+(defun perinf-storage--decode-string-list (value)
+  "Decode a printed list of strings from Org property VALUE."
+  (when (and value (not (string-empty-p value)))
+    (condition-case nil
+        (let ((decoded (car (read-from-string value))))
+          (when (and (listp decoded) (seq-every-p #'stringp decoded))
+            decoded))
+      (error nil))))
+
+(defun perinf-storage--encode-string-list (values)
+  "Encode string list VALUES for storage in one Org property."
+  (prin1-to-string (sort (delete-dups (copy-sequence values)) #'string-lessp)))
+
+(defun perinf-storage--task-activity-resources-at-point ()
+  "Return the task activity resources at point as an alist."
+  `((file . ,(perinf-storage--decode-string-list
+              (org-entry-get nil "TASK_ACTIVITY_FILES")))
+    (buffer . ,(perinf-storage--decode-string-list
+                (org-entry-get nil "TASK_ACTIVITY_BUFFERS")))))
+
+(defun perinf-storage-set-task-activity-resource
+    (id kind identifier add-p &optional project-directory)
+  "Add or remove a task activity resource.
+ID identifies the task, KIND is `file' or `buffer', and IDENTIFIER is its
+persistent name.  When ADD-P is non-nil, remove the same resource from other
+tasks first so automatic activity attribution remains unambiguous."
+  (unless (memq kind '(file buffer))
+    (signal 'perinf-storage-error (list (format "Unsupported resource kind: %s" kind))))
+  (unless (and (stringp identifier) (not (string-empty-p identifier)))
+    (user-error "Activity resource must not be empty"))
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/tasks.org" project))
+         (property (if (eq kind 'file)
+                       "TASK_ACTIVITY_FILES"
+                     "TASK_ACTIVITY_BUFFERS"))
+         found)
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Task storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (org-map-entries
+       (lambda ()
+         (when (equal (org-entry-get nil "PERINF_TYPE") "task")
+           (let ((current-id (org-entry-get nil "ID"))
+                 (values (perinf-storage--decode-string-list
+                          (org-entry-get nil property))))
+             (when (equal current-id id)
+               (setq found t))
+             (when (or (and add-p (member identifier values))
+                       (equal current-id id))
+               (setq values (delete identifier values))
+               (when (and add-p (equal current-id id))
+                 (push identifier values))
+               (if values
+                   (org-entry-put nil property
+                                  (perinf-storage--encode-string-list values))
+                 (org-entry-delete nil property))
+               (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now)))))))
+      (unless found
+        (signal 'perinf-object-not-found (list id)))
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find (lambda (object) (equal (perinf-object-id object) id))
+              (perinf-storage-list 'task project))))
+
+(defun perinf-storage-touch-task-activity
+    (id kind identifier &optional activity-at project-directory)
+  "Record observed KIND and IDENTIFIER activity for running task ID.
+Return non-nil when the timestamp was stored.  A stopped timer is deliberately
+left unchanged because activity cannot then be counted as timed task work.
+The resource must still be associated with the task, preventing stale buffers
+from attributing work after a file has been reassigned to another task."
+  (unless (memq kind '(file buffer))
+    (signal 'perinf-storage-error (list (format "Unsupported resource kind: %s" kind))))
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/tasks.org" project))
+         stored)
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Task storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id id)
+        (signal 'perinf-object-not-found (list id)))
+      (let* ((property (if (eq kind 'file)
+                           "TASK_ACTIVITY_FILES"
+                         "TASK_ACTIVITY_BUFFERS"))
+             (associated
+              (member identifier
+                      (perinf-storage--decode-string-list
+                       (org-entry-get nil property)))))
+        (when (and associated
+                   (equal (org-entry-get nil "PERINF_STATUS") "active")
+                   (org-entry-get nil "TASK_TIMER_STARTED_AT"))
+        (let ((now (or activity-at (perinf-storage--iso-now))))
+          (org-entry-put nil "TASK_LAST_ACTIVITY_AT" now)
+          (org-entry-put nil "TASK_LAST_ACTIVITY_RESOURCE"
+                         (perinf-storage--safe-line
+                          (if (eq kind 'file)
+                              identifier
+                            (format "Buffer: %s" identifier))))
+          (perinf-storage--atomic-write-buffer (current-buffer) file)
+            (setq stored t))))
+      stored)))
+
 (defun perinf-storage--stop-task-timer-at-point (&optional stopped-at)
   "Stop the task timer at point at STOPPED-AT and return total seconds."
   (let ((started-at (org-entry-get nil "TASK_TIMER_STARTED_AT")))
@@ -452,13 +563,18 @@ This implementation supports controlled task status changes."
         (user-error "Task timer is already running"))
       (let ((now (perinf-storage--iso-now)))
         (org-entry-put nil "TASK_TIMER_STARTED_AT" now)
+        (org-entry-put nil "TASK_LAST_ACTIVITY_AT" now)
+        (org-entry-put nil "TASK_LAST_ACTIVITY_RESOURCE" "PerInf timer")
         (org-entry-put nil "MODIFIED_AT" now))
       (perinf-storage--atomic-write-buffer (current-buffer) file))
     (seq-find (lambda (object) (equal (perinf-object-id object) id))
               (perinf-storage-list 'task project))))
 
-(defun perinf-storage-stop-task-timer (id &optional project-directory)
-  "Stop the work timer for task ID in PROJECT-DIRECTORY and add its time."
+(defun perinf-storage-stop-task-timer
+    (id &optional project-directory stopped-at)
+  "Stop task ID's work timer and add its time.
+Use PROJECT-DIRECTORY for storage.  When STOPPED-AT is non-nil, calculate the
+elapsed interval up to that time; this supports an exact inactivity boundary."
   (let* ((project (or project-directory
                       (signal 'perinf-storage-error
                               '("No project directory supplied"))))
@@ -471,7 +587,7 @@ This implementation supports controlled task status changes."
       (org-mode)
       (unless (perinf-storage--find-id id)
         (signal 'perinf-object-not-found (list id)))
-      (perinf-storage--stop-task-timer-at-point)
+      (perinf-storage--stop-task-timer-at-point stopped-at)
       (perinf-storage--atomic-write-buffer (current-buffer) file))
     (seq-find (lambda (object) (equal (perinf-object-id object) id))
               (perinf-storage-list 'task project))))
@@ -668,7 +784,17 @@ Signal an error when tasks or meetings still refer to the person."
                       (TASK_TIMER_STARTED_AT
                        . ,(org-entry-get nil "TASK_TIMER_STARTED_AT"))
                       (TASK_WORK_SECONDS
-                       . ,(org-entry-get nil "TASK_WORK_SECONDS")))
+                       . ,(org-entry-get nil "TASK_WORK_SECONDS"))
+                      (TASK_LAST_ACTIVITY_AT
+                       . ,(org-entry-get nil "TASK_LAST_ACTIVITY_AT"))
+                      (TASK_LAST_ACTIVITY_RESOURCE
+                       . ,(org-entry-get nil "TASK_LAST_ACTIVITY_RESOURCE"))
+                      (TASK_ACTIVITY_FILES
+                       . ,(perinf-storage--decode-string-list
+                           (org-entry-get nil "TASK_ACTIVITY_FILES")))
+                      (TASK_ACTIVITY_BUFFERS
+                       . ,(perinf-storage--decode-string-list
+                           (org-entry-get nil "TASK_ACTIVITY_BUFFERS"))))
                     :file file
                     :position (point))
                    objects))))))
