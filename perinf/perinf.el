@@ -56,13 +56,21 @@
 (defun perinf-start-task-timer (task-id)
   "Start TASK-ID's work timer."
   (interactive (list (perinf-task--select-timer-task t)))
-  (perinf-task-toggle-timer task-id t))
+  (perinf-task-toggle-timer task-id t)
+  (perinf-task-maybe-associate-current-buffer task-id))
 
 ;;;###autoload
 (defun perinf-stop-task-timer (task-id)
   "Stop TASK-ID's work timer."
   (interactive (list (perinf-task--select-timer-task nil)))
   (perinf-task-toggle-timer task-id nil))
+
+;;;###autoload
+(defalias 'perinf-associate-buffer-with-task #'perinf-task-associate-buffer)
+
+;;;###autoload
+(defalias 'perinf-dissociate-buffer-from-task
+  #'perinf-task-dissociate-current-buffer)
 
 ;;;###autoload
 (defalias 'perinf-create-task-from-decision

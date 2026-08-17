@@ -961,6 +961,16 @@ Keyboard button actions run COMMAND immediately."
   (unless (string-empty-p (or value ""))
     (insert (format "%s: %s\n" label value))))
 
+(defun perinf-core--associate-buffer-with-task (task-id)
+  "Prompt for an open buffer, associate it with TASK-ID, and refresh details."
+  (perinf-task-associate-buffer task-id)
+  (let ((task (seq-find
+               (lambda (candidate)
+                 (equal (perinf-object-id candidate) task-id))
+               (perinf-storage-list 'task perinf-current-project))))
+    (when task
+      (perinf-core-show-object task))))
+
 (defun perinf-core--render-object-detail ()
   "Insert details for `perinf-selected-object'."
   (let* ((object perinf-selected-object)
@@ -1011,6 +1021,14 @@ Keyboard button actions run COMMAND immediately."
               (context-id (alist-get 'CONTEXT_ID properties))
               (timer-started-at
                (alist-get 'TASK_TIMER_STARTED_AT properties))
+              (last-activity-at
+               (alist-get 'TASK_LAST_ACTIVITY_AT properties))
+              (last-activity-resource
+               (alist-get 'TASK_LAST_ACTIVITY_RESOURCE properties))
+              (activity-files
+               (alist-get 'TASK_ACTIVITY_FILES properties))
+              (activity-buffers
+               (alist-get 'TASK_ACTIVITY_BUFFERS properties))
               (context
                (and context-id
                     (seq-find
@@ -1072,6 +1090,18 @@ Keyboard button actions run COMMAND immediately."
            (if timer-started-at
                (concat " " (perinf-i18n 'task.timer-running))
              "")))
+         (perinf-core--detail-value
+          (perinf-i18n 'task.last-activity)
+          (when last-activity-at
+            (if last-activity-resource
+                (format "%s — %s" last-activity-at last-activity-resource)
+              last-activity-at)))
+         (perinf-core--detail-value
+          (perinf-i18n 'task.activity-files)
+          (and activity-files (mapconcat #'identity activity-files ", ")))
+         (perinf-core--detail-value
+          (perinf-i18n 'task.activity-buffers)
+          (and activity-buffers (mapconcat #'identity activity-buffers ", ")))
          (when (eq (perinf-object-status object) 'active)
            (perinf-core--insert-button
             (perinf-i18n (if timer-started-at
@@ -1082,7 +1112,15 @@ Keyboard button actions run COMMAND immediately."
                (button-get button 'perinf-task-id)
                (button-get button 'perinf-task-timer-start-p)))
             'perinf-task-id (perinf-object-id object)
-            'perinf-task-timer-start-p (not timer-started-at)))
+            'perinf-task-timer-start-p (not timer-started-at))
+           (insert "   ")
+           (perinf-core--insert-button
+            (perinf-i18n 'action.associate-task-buffer)
+            (lambda (button)
+              (perinf-core--call-function-from-button
+               #'perinf-core--associate-buffer-with-task
+               (button-get button 'perinf-task-id)))
+            'perinf-task-id (perinf-object-id object)))
          (insert "\n\n")
          (dolist
              (action
