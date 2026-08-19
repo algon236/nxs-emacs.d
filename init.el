@@ -219,9 +219,48 @@ for ESLint."
 (require 'autoinsert)
 (auto-insert-mode 1)
 (setq auto-insert-query nil) ;; spørg ikke hver gang
+(defun emacs-nxs/finish-org-template ()
+  "Fill dynamic fields in a newly inserted general Org template."
+  (let* ((title (file-name-base buffer-file-name))
+         (description (read-string "Beskrivelse: "))
+         (keywords (read-string "Nøgleord (kommasepareret): "))
+         (replacements `(("{{title}}" . ,title)
+                         ("{{description}}" . ,description)
+                         ("{{keywords}}" . ,keywords))))
+    (dolist (replacement replacements)
+      (goto-char (point-min))
+      (while (search-forward (car replacement) nil t)
+        (replace-match (cdr replacement) t t)))
+    (goto-char (point-max))))
 (define-auto-insert
   "\\.org\\'"
-  "~/.emacs.d/var/templates/template.org")
+  ["~/.emacs.d/var/templates/template.org"
+   emacs-nxs/finish-org-template])
+(define-auto-insert
+  "\\.tex\\'"
+  "~/.emacs.d/var/templates/template.tex")
+(defun emacs-nxs/finish-elisp-template ()
+  "Fill dynamic fields in a newly inserted Emacs Lisp template."
+  (let* ((filename (file-name-nondirectory buffer-file-name))
+         (feature (file-name-base filename))
+         (description (read-string "Kort beskrivelse: "))
+         (keywords (read-string "Nøgleord (kommasepareret): "))
+         (replacements `(("{{filename}}" . ,filename)
+                         ("{{feature}}" . ,feature)
+                         ("{{description}}" . ,description)
+                         ("{{year}}" . ,(format-time-string "%Y"))
+                         ("{{keywords}}" . ,keywords))))
+    (dolist (replacement replacements)
+      (goto-char (point-min))
+      (while (search-forward (car replacement) nil t)
+        (replace-match (cdr replacement) t t)))
+    (goto-char (point-min))
+    (when (search-forward "{{point}}" nil t)
+      (replace-match "" t t))))
+(define-auto-insert
+  "\\.el\\'"
+  ["~/.emacs.d/var/templates/template.el"
+   emacs-nxs/finish-elisp-template])
 (defun emacs-nxs/org-roam-file-p ()
   "Return non-nil when the new file belongs to `org-roam-directory'."
   (and buffer-file-name
@@ -912,6 +951,7 @@ Tasks without a deadline are placed after dated objects."
 
   (defun emacs-nxs/start--open-perinf-object (button)
     "Open the PerInf object stored in BUTTON."
+    (perinf-core-open emacs-nxs/start-perinf-project-directory)
     (perinf-core-show-object (button-get button 'perinf-object)))
 
   (defun emacs-nxs/start--insert-item (label width action property value)

@@ -6,6 +6,7 @@
 
 (require 'perinf-date)
 (require 'perinf-i18n)
+(require 'perinf-person)
 (require 'perinf-storage)
 (require 'perinf-time)
 (require 'seq)
@@ -156,23 +157,9 @@
           choices))))
 
 (defun perinf-meeting--select-person ()
-  "Prompt for a person and return its ID."
-  (let* ((people
-          (seq-filter
-           (lambda (person)
-             (eq (perinf-object-status person) 'active))
-           (perinf-storage-list 'person perinf-current-project)))
-         (choices
-          (mapcar (lambda (person)
-                    (cons (perinf-object-title person)
-                          (perinf-object-id person)))
-                  people)))
-    (unless choices
-      (user-error "%s" (perinf-i18n 'person.none)))
-    (cdr (assoc
-          (completing-read
-           (perinf-i18n 'person.select-prompt) choices nil t)
-          choices))))
+  "Prompt for a person or group and return person IDs."
+  (perinf-person-select-person-or-group
+   (perinf-i18n 'person.select-prompt)))
 
 (defun perinf-meeting--select-role ()
   "Prompt for a participant role and return its internal symbol."
@@ -194,14 +181,22 @@
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (let ((selected-meeting (or meeting-id (perinf-meeting--select-meeting)))
-        (person-id (perinf-meeting--select-person))
+        (person-ids (perinf-meeting--select-person))
         (role (perinf-meeting--select-role)))
-    (perinf-storage-add-child
-     selected-meeting 'participants 'participant
-     `((PERSON_ID . ,person-id)
-       (PARTICIPANT_ROLE . ,role)
-       (ATTENDANCE_STATUS . invited))
-     perinf-current-project)
+    (let ((existing
+           (mapcar
+            (lambda (participant)
+              (alist-get 'PERSON_ID (perinf-object-properties participant)))
+            (perinf-storage-list-children
+             selected-meeting 'participants perinf-current-project))))
+      (dolist (person-id person-ids)
+        (unless (member person-id existing)
+          (perinf-storage-add-child
+           selected-meeting 'participants 'participant
+           `((PERSON_ID . ,person-id)
+             (PARTICIPANT_ROLE . ,role)
+             (ATTENDANCE_STATUS . invited))
+           perinf-current-project))))
     (message "%s" (perinf-i18n 'meeting.participant-added))
     (when (fboundp 'perinf-core-meetings)
       (perinf-core-meetings))))

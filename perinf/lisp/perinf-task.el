@@ -6,6 +6,7 @@
 
 (require 'perinf-date)
 (require 'perinf-i18n)
+(require 'perinf-person)
 (require 'perinf-storage)
 (require 'seq)
 
@@ -271,28 +272,12 @@ Each timer is stopped exactly at its last recorded activity plus
   (perinf-task-create decision-id))
 
 (defun perinf-task--select-person ()
-  "Prompt for a registered person and return the stable ID."
-  (let* ((people
-          (seq-filter
-           (lambda (person)
-             (eq (perinf-object-status person) 'active))
-           (perinf-storage-list 'person perinf-current-project)))
-         (choices
-          (mapcar
-           (lambda (person)
-             (cons (perinf-object-title person)
-                   (perinf-object-id person)))
-           people)))
-    (unless choices
-      (user-error "%s" (perinf-i18n 'person.none)))
-    (cdr
-     (assoc
-      (completing-read
-       (perinf-i18n 'task.assignee-prompt) choices nil t)
-      choices))))
+  "Prompt for a registered person or group and return person IDs."
+  (perinf-person-select-person-or-group
+   (perinf-i18n 'task.assignee-prompt)))
 
 (defun perinf-task-assign (task-id)
-  "Assign TASK-ID to a registered person."
+  "Assign TASK-ID to a registered person or the current members of a group."
   (interactive)
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))

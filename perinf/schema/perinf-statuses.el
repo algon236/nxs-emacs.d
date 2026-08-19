@@ -7,6 +7,7 @@
 (defconst perinf-status-definitions
   '((task open active waiting completed cancelled)
     (person active inactive)
+    (person-group active inactive)
     (meeting planned in-progress held postponed cancelled)
     (audio-recording expected available missing processing transcribed failed)
     (document available missing)

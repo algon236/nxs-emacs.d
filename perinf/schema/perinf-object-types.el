@@ -5,7 +5,7 @@
 ;;; Code:
 
 (defconst perinf-object-types
-  '(project-metadata context person task meeting meeting-series participant
+  '(project-metadata context person person-group task meeting meeting-series participant
     agenda-item document audio-recording transcript corrected-transcript
     minutes-series minutes minutes-section decision task-proposal
     decision-proposal history-entry)

@@ -3,9 +3,10 @@
 (require 'org)
 (require 'org-table)
 (require 'cl-lib)
+(require 'calendar)
 (require 'subr-x)
 
-(defconst emacs-nxs-sleep-report-version 13
+(defconst emacs-nxs-sleep-report-version 16
   "Projektets heltalsversion.")
 
 (defgroup emacs-nxs-sleep-report nil
@@ -293,6 +294,88 @@ morgen, middag og aften."
              fill draw header)
      (format "  dato  %s\n%s\n};\n" header data))))
 
+(defun emacs-nxs-sleep-report--blood-pressure-plot (rows)
+  "Lav sys- og dia-kurver for morgen, middag og aften fra ROWS.
+Manglende eller ugyldige målinger udelades enkeltvis.  Sys og dia for
+samme tidspunkt bruger samme farve og skelnes med linje og markør.
+Hver serie med mindst to målinger får en lineær tendenslinje fra den
+første til den sidste dag i målingernes måned.  Dia under 60 er en
+operatørfejl; sys over 160 udelades fra plottet."
+  (let (plots)
+    (dolist (series '((3 sys "morgen-sys" "Morgen sys" "morgen" "blue" "solid" "*")
+                      (4 dia "morgen-dia" "Morgen dia" "morgen" "blue" "dashed" "square*")
+                      (5 sys "middag-sys" "Middag sys" "middag" "red" "solid" "*")
+                      (6 dia "middag-dia" "Middag dia" "middag" "red" "dashed" "square*")
+                      (7 sys "aften-sys" "Aften sys" "aften" "green!60!black" "solid" "*")
+                      (8 dia "aften-dia" "Aften dia" "aften" "green!60!black" "dashed" "square*")))
+      (let* ((column (nth 0 series))
+             (kind (nth 1 series))
+             (header (nth 2 series))
+             (legend (nth 3 series))
+             (time-of-day (nth 4 series))
+             (color (nth 5 series))
+             (line-style (nth 6 series))
+             (mark (nth 7 series))
+             (valid
+              (cl-loop for row in (cdr rows)
+                       for date = (emacs-nxs-sleep-report--date-iso (car row))
+                       for value = (emacs-nxs-sleep-report--number (nth column row))
+                       when (and date value (eq kind 'dia) (< value 60))
+                       do (user-error
+                           "Blodtryk %s: dia for %s er %.1f; værdien må ikke være under 60"
+                           date time-of-day value)
+                       when (and date value
+                                 (or (eq kind 'dia) (<= value 160)))
+                       collect (cons (string-to-number (substring date 8 10))
+                                     value)))
+             (first-date
+              (cl-loop for row in (cdr rows)
+                       for date = (emacs-nxs-sleep-report--date-iso (car row))
+                       when date return date))
+             (month-end
+              (when first-date
+                (calendar-last-day-of-month
+                 (string-to-number (substring first-date 5 7))
+                 (string-to-number (substring first-date 0 4)))))
+             (regression
+              (when (> (length valid) 1)
+                (let* ((count (float (length valid)))
+                       (sum-x (cl-loop for entry in valid sum (car entry)))
+                       (sum-y (cl-loop for entry in valid sum (cdr entry)))
+                       (sum-xx (cl-loop for entry in valid
+                                        sum (* (car entry) (car entry))))
+                       (sum-xy (cl-loop for entry in valid
+                                        sum (* (car entry) (cdr entry))))
+                       (denominator (- (* count sum-xx) (* sum-x sum-x))))
+                  (unless (zerop denominator)
+                    (let* ((slope (/ (- (* count sum-xy) (* sum-x sum-y))
+                                     denominator))
+                           (intercept (/ (- sum-y (* slope sum-x)) count)))
+                      (list (+ intercept slope)
+                            (+ intercept (* slope month-end)))))))))
+        (when valid
+          (push
+           (concat
+            (format "\\addplot+[color=%s, %s, mark=%s, mark options={fill=%s!40}] table[x=dato,y=%s] {\n"
+                    color line-style mark color header)
+            (format "  dato  %s\n%s\n};\n"
+                    header
+                    (mapconcat
+                     (lambda (entry)
+                       (format "  %d  %.4f" (car entry) (cdr entry)))
+                     valid "\n"))
+            (format "\\addlegendentry{%s}\n" legend)
+            (when regression
+              (concat
+               (format "\\addplot+[color=%s, densely dotted, very thick, no marks, forget plot] coordinates {"
+                       color)
+               (format "(1,%.4f) (%d,%.4f)};\n"
+                       (nth 0 regression) month-end (nth 1 regression)))))
+           plots))))
+    (unless plots
+      (user-error "Ingen gyldige blodtryksmålinger til plottet"))
+    (mapconcat #'identity (nreverse plots) "\n")))
+
 (defun emacs-nxs-sleep-report--generate
     (directory table-name rows medicine-rows blood-pressure-rows)
   (let* ((out (expand-file-name emacs-nxs-sleep-report-output-directory directory))
@@ -359,6 +442,10 @@ morgen, middag og aften."
      (expand-file-name "plot-temperature.tex" out)
      (emacs-nxs-sleep-report--line-plot usable (lambda (r) (nth 5 r))
                                          "temp" "blue" 25 45 t))
+
+    (emacs-nxs-sleep-report--write
+     (expand-file-name "plot-blood-pressure.tex" out)
+     (emacs-nxs-sleep-report--blood-pressure-plot blood-pressure-rows))
 
     ;; Kun rækker med gyldige tider medtages i søvnplottet.
     ;; Nederste del: faktisk søvn.
