@@ -1,12 +1,12 @@
 # -*- mode: org; lexical-binding: t; coding: utf-8 -*-
-#+TITLE: Ny fil
+#+TITLE: {{title}}
 #+AUTHOR: Niels Søndergaard
 #+DATE: \today
 #+EMAIL: niels@algon.dk
 #+LANGUAGE: da
 #+CATEGORY: org
-#+DESCRIPTION:
-#+KEYWORDS:
+#+DESCRIPTION: {{description}}
+#+KEYWORDS: {{keywords}}
 #+STARTUP: inlineimages constSI entitiespretty
 #+OPTIONS: H:3 num:t toc:nil \n:nil @:t e:t |:t ^:t -:t f:t *:t <:t
 #+OPTIONS: tex:t arch:t title:nil broken-links:mark
@@ -15,7 +15,7 @@
 # Tabeller får som standard mørkegrønt tabelhoved med hvid tekst og
 # skiftevis hvid/lysegrøn baggrund. Kolonnerne tilpasses den enkelte tabel.
 # En enkelt tabel kan få andre tabularray-valg med en #+ATTR_LATEX: :align-linje.
-#
+#+INCLUDE: "/Users/niels/include/acronyms.org"
 # Dokumentets særlige header, hvis den skal bruges
 #+INCLUDE: "/Users/niels/include/headers/NS-hdr.tex" export latex
 # Valgfrie moduler. Fjern "# " foran de moduler, dokumentet behøver.
@@ -25,7 +25,5 @@
 # #+INCLUDE: "/Users/niels/include/org/modules/extra-graphics.org"
 # #+INCLUDE: "/Users/niels/include/org/modules/plots.org"
 # #+INCLUDE: "/Users/niels/include/org/modules/index.org"
-# #+INCLUDE: "/Users/niels/include/org/modules/acronyms.org"
 # #+INCLUDE: "/Users/niels/include/org/modules/annotations.org"
 # #+INCLUDE: "/Users/niels/include/org/modules/epigraph.org"
-# #+INCLUDE: "/Users/niels/include/org/modules/testtext.org"

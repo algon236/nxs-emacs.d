@@ -43,6 +43,7 @@ part of the persistent shared Org data."
     (define-key map (kbd "h") #'perinf-core-home)
     (define-key map (kbd "w") #'perinf-core-work)
     (define-key map (kbd "m") #'perinf-core-meetings)
+    (define-key map (kbd "p") #'perinf-core-people)
     (define-key map (kbd "r") #'perinf-core-records)
     (define-key map (kbd "a") #'perinf-core-administration)
     (define-key map (kbd "s") #'perinf-core-search)
@@ -62,9 +63,6 @@ part of the persistent shared Org data."
 
 (defvar-local perinf-selected-object nil
   "Object displayed in the detail view of the current buffer.")
-
-(defvar-local perinf-administration-people-expanded-p nil
-  "Non-nil when the person administration list is expanded.")
 
 (define-derived-mode perinf-mode special-mode "Personal Work and Information System"
   "Major mode for the Personal Work and Information System start page.")
@@ -101,6 +99,7 @@ Keyboard button actions run COMMAND immediately."
   (dolist (entry '((home . perinf-core-home)
                    (work . perinf-core-work)
                    (meetings . perinf-core-meetings)
+                   (people . perinf-core-people)
                    (records . perinf-core-records)
                    (administration . perinf-core-administration)))
     (perinf-core--insert-button
@@ -421,17 +420,12 @@ Keyboard button actions run COMMAND immediately."
                     (terminal
                      (memq (perinf-object-status task)
                            '(completed cancelled)))
-                    (assignee
-                     (let ((assignee-id
-                            (alist-get
-                             'ASSIGNEE_ID
-                             (perinf-object-properties task))))
-                       (and assignee-id
-                            (seq-find
-                             (lambda (person)
-                               (equal
-                                (perinf-object-id person) assignee-id))
-                             people))))
+                    (assignees
+                     (seq-filter
+                      (lambda (person)
+                        (member (perinf-object-id person)
+                                (perinf-storage-task-assignee-ids task)))
+                      people))
                     (context
                      (let ((context-id
                             (alist-get
@@ -461,11 +455,11 @@ Keyboard button actions run COMMAND immediately."
                   (insert "  —  "
                           (propertize (perinf-i18n 'task.overdue)
                                       'face 'error)))
-                (when assignee
+                (when assignees
                   (insert "  —  "
                           (perinf-i18n 'task.assignee)
                           ": "
-                          (perinf-object-title assignee)))
+                          (mapconcat #'perinf-object-title assignees ", ")))
                 (when context
                   (insert "  —  "
                           (perinf-i18n 'task.context)
@@ -859,7 +853,8 @@ Keyboard button actions run COMMAND immediately."
      (if (perinf-core--archived-meeting-p object)
          (perinf-core-records)
        (perinf-core-meetings)))
-    ('person (perinf-core-records))
+    ('person (perinf-core-people))
+    ('person-group (perinf-core-people))
     ('decision (perinf-core-records))
     ('context (perinf-core-records))
     ('transcript
@@ -1010,14 +1005,12 @@ Keyboard button actions run COMMAND immediately."
                        (equal (perinf-object-id candidate) decision-id))
                      (perinf-storage-list
                       'decision perinf-current-project))))
-              (assignee-id (alist-get 'ASSIGNEE_ID properties))
-              (assignee
-               (and assignee-id
-                    (seq-find
-                     (lambda (candidate)
-                       (equal (perinf-object-id candidate) assignee-id))
-                     (perinf-storage-list
-                      'person perinf-current-project))))
+              (assignees
+               (let ((ids (perinf-storage-task-assignee-ids object)))
+                 (seq-filter
+                  (lambda (candidate)
+                    (member (perinf-object-id candidate) ids))
+                  (perinf-storage-list 'person perinf-current-project))))
               (context-id (alist-get 'CONTEXT_ID properties))
               (timer-started-at
                (alist-get 'TASK_TIMER_STARTED_AT properties))
@@ -1049,18 +1042,22 @@ Keyboard button actions run COMMAND immediately."
                (button-get button 'perinf-object)))
             'perinf-object source-decision)
            (insert "\n"))
-         (when assignee
+         (when assignees
            (insert (perinf-i18n 'task.assignee) ": ")
-           (perinf-core--insert-button
-            (perinf-object-title assignee)
-            (lambda (button)
-              (perinf-core-show-object
-               (button-get button 'perinf-object)))
-            'perinf-object assignee)
+           (let ((remaining assignees))
+             (while remaining
+               (perinf-core--insert-button
+                (perinf-object-title (car remaining))
+                (lambda (button)
+                  (perinf-core-show-object
+                   (button-get button 'perinf-object)))
+                'perinf-object (car remaining))
+               (setq remaining (cdr remaining))
+               (when remaining (insert ", "))))
            (insert "\n"))
          (perinf-core--insert-button
           (perinf-i18n
-           (if assignee 'task.change-assignee 'task.assign))
+           (if assignees 'task.change-assignee 'task.assign))
           (lambda (button)
             (perinf-task-assign
              (button-get button 'perinf-task-id)))
@@ -1161,10 +1158,8 @@ Keyboard button actions run COMMAND immediately."
        (let* ((assigned-tasks
               (seq-filter
                (lambda (task)
-                 (equal
-                  (alist-get
-                   'ASSIGNEE_ID (perinf-object-properties task))
-                  (perinf-object-id object)))
+                 (member (perinf-object-id object)
+                         (perinf-storage-task-assignee-ids task)))
                (perinf-storage-list 'task perinf-current-project)))
               (meeting-memberships
                (delq
@@ -1865,11 +1860,117 @@ Keyboard button actions run COMMAND immediately."
       (perinf-core--render))
     (pop-to-buffer buffer)))
 
-(defun perinf-core-toggle-administration-people ()
-  "Toggle the person list in the administration view."
-  (setq perinf-administration-people-expanded-p
-        (not perinf-administration-people-expanded-p))
-  (perinf-core--render))
+(defun perinf-core--person-name (person-id people)
+  "Return the display name for PERSON-ID from PEOPLE."
+  (let ((person (seq-find
+                 (lambda (candidate)
+                   (equal (perinf-object-id candidate) person-id))
+                 people)))
+    (and person (perinf-object-title person))))
+
+(defun perinf-core--render-people ()
+  "Insert the person and group administration view."
+  (insert (propertize (perinf-i18n 'people.title)
+                      'face '(:height 1.2 :weight bold))
+          "\n\n")
+  (if (not perinf-current-project)
+      (insert (perinf-i18n 'home.no-project) "\n")
+    (perinf-core--insert-button
+     (perinf-i18n 'action.new-person)
+     (lambda (_button)
+       (perinf-core--call-interactively-from-button #'perinf-person-create)))
+    (insert "   ")
+    (perinf-core--insert-button
+     (perinf-i18n 'group.new)
+     (lambda (_button)
+       (perinf-core--call-interactively-from-button
+        #'perinf-person-group-create)))
+    (insert "\n\n")
+    (let ((people (perinf-storage-list 'person perinf-current-project))
+          (groups (perinf-storage-list 'person-group perinf-current-project)))
+      (insert (propertize (perinf-i18n 'person.register) 'face 'bold) "\n\n")
+      (if people
+          (dolist (person people)
+            (let* ((id (perinf-object-id person))
+                   (status (perinf-object-status person))
+                   (properties (perinf-object-properties person)))
+              (insert "• ")
+              (perinf-core--insert-button
+               (perinf-object-title person)
+               (lambda (button)
+                 (perinf-core-show-object (button-get button 'perinf-object)))
+               'perinf-object person 'face 'bold)
+              (insert " — " (perinf-i18n (intern (format "status.%s" status))))
+              (unless (string-empty-p (or (alist-get 'EMAIL properties) ""))
+                (insert " — " (alist-get 'EMAIL properties)))
+              (insert "\n  ")
+              (perinf-core--insert-button
+               (perinf-i18n 'person.edit)
+               (lambda (button)
+                 (perinf-core--call-function-from-button
+                  #'perinf-person-edit (button-get button 'perinf-person-id)))
+               'perinf-person-id id)
+              (insert "   ")
+              (if (eq status 'active)
+                  (perinf-core--insert-button
+                   (perinf-i18n 'person.archive)
+                   (lambda (button)
+                     (perinf-core--call-function-from-button
+                      #'perinf-person-archive
+                      (button-get button 'perinf-person-id)))
+                   'perinf-person-id id)
+                (perinf-core--insert-button
+                 (perinf-i18n 'person.reactivate)
+                 (lambda (button)
+                   (perinf-core--call-function-from-button
+                    #'perinf-person-reactivate
+                    (button-get button 'perinf-person-id)))
+                 'perinf-person-id id))
+              (insert "\n\n")))
+        (insert (perinf-i18n 'person.none) "\n\n"))
+      (insert (propertize (perinf-i18n 'group.title) 'face 'bold) "\n\n")
+      (if groups
+          (dolist (group groups)
+            (let* ((id (perinf-object-id group))
+                   (status (perinf-object-status group))
+                   (member-names
+                    (delq nil
+                          (mapcar
+                           (lambda (person-id)
+                             (perinf-core--person-name person-id people))
+                           (perinf-storage-group-member-ids group)))))
+              (insert "• " (propertize (perinf-object-title group) 'face 'bold)
+                      " — " (perinf-i18n (intern (format "status.%s" status)))
+                      "\n  " (perinf-i18n 'group.members) ": "
+                      (if member-names
+                          (mapconcat #'identity member-names ", ")
+                        (perinf-i18n 'group.no-members))
+                      "\n  ")
+              (perinf-core--insert-button
+               (perinf-i18n 'group.edit)
+               (lambda (button)
+                 (perinf-core--call-function-from-button
+                  #'perinf-person-group-edit
+                  (button-get button 'perinf-group-id)))
+               'perinf-group-id id)
+              (insert "   ")
+              (if (eq status 'active)
+                  (perinf-core--insert-button
+                   (perinf-i18n 'group.archive)
+                   (lambda (button)
+                     (perinf-core--call-function-from-button
+                      #'perinf-person-group-archive
+                      (button-get button 'perinf-group-id)))
+                   'perinf-group-id id)
+                (perinf-core--insert-button
+                 (perinf-i18n 'group.reactivate)
+                 (lambda (button)
+                   (perinf-core--call-function-from-button
+                    #'perinf-person-group-reactivate
+                    (button-get button 'perinf-group-id)))
+                 'perinf-group-id id))
+              (insert "\n\n")))
+        (insert (perinf-i18n 'group.none) "\n")))))
 
 (defun perinf-core--render-administration ()
   "Insert the administration view."
@@ -1896,71 +1997,7 @@ Keyboard button actions run COMMAND immediately."
                  (perinf-core--display-setting 'TIME_FORMAT))
          (format "%s: %s\n"
                  (perinf-i18n 'project.schema-version)
-                 (perinf-core--metadata-value 'SCHEMA_VERSION)))
-        (insert "\n"
-                (if perinf-administration-people-expanded-p "▾ " "▸ "))
-        (perinf-core--insert-button
-         (if perinf-administration-people-expanded-p
-             (perinf-i18n 'administration.hide-people)
-           (perinf-i18n 'administration.people))
-         (lambda (_button)
-           (perinf-core-toggle-administration-people))
-         'face 'bold)
-        (insert "\n")
-        (when perinf-administration-people-expanded-p
-          (insert "\n")
-          (let ((people
-                 (perinf-storage-list 'person perinf-current-project)))
-            (if people
-                (dolist (person people)
-                  (let* ((person-id (perinf-object-id person))
-                         (status (perinf-object-status person))
-                         (references
-                          (perinf-storage-person-references
-                           person-id perinf-current-project))
-                         (task-count
-                          (length (plist-get references :tasks)))
-                         (meeting-count
-                          (length (plist-get references :meetings))))
-                    (insert "• "
-                            (perinf-object-title person)
-                            " — "
-                            (perinf-i18n
-                             (intern (format "status.%s" status)))
-                            (format
-                             " — %s: %d, %s: %d\n  "
-                             (perinf-i18n 'task.count)
-                             task-count
-                             (perinf-i18n 'meeting.count)
-                             meeting-count))
-                    (if (eq status 'active)
-                        (perinf-core--insert-button
-                         (perinf-i18n 'person.archive)
-                         (lambda (button)
-                           (perinf-core--call-function-from-button
-                            #'perinf-person-archive
-                            (button-get button 'perinf-person-id)))
-                         'perinf-person-id person-id)
-                      (perinf-core--insert-button
-                       (perinf-i18n 'person.reactivate)
-                       (lambda (button)
-                         (perinf-core--call-function-from-button
-                          #'perinf-person-reactivate
-                          (button-get button 'perinf-person-id)))
-                       'perinf-person-id person-id))
-                    (insert "   ")
-                    (perinf-core--insert-button
-                     (perinf-i18n 'person.delete)
-                     (lambda (button)
-                       (perinf-core--call-function-from-button
-                        #'perinf-person-delete
-                        (button-get button 'perinf-person-id)))
-                     'perinf-person-id person-id
-                     'face (if (or (> task-count 0) (> meeting-count 0))
-                               'shadow
-                             'error))
-                    (insert "\n\n")))
-              (insert (perinf-i18n 'person.none) "\n")))))
+                 (perinf-core--metadata-value 'SCHEMA_VERSION))))
     (insert (perinf-i18n 'home.no-project) "\n")))
 
 (defun perinf-core--render ()
@@ -1979,6 +2016,7 @@ Keyboard button actions run COMMAND immediately."
           ('home (perinf-core--render-home))
           ('work (perinf-core--render-work))
           ('meetings (perinf-core--render-meetings))
+          ('people (perinf-core--render-people))
           ('records (perinf-core--render-records))
           ('search (perinf-core--render-search))
           ('detail (perinf-core--render-object-detail))
@@ -2052,6 +2090,11 @@ With PROJECT-DIRECTORY, display metadata from that Personal Work and Information
   "Show the Personal Work and Information System meetings view."
   (interactive)
   (perinf-core--show-view 'meetings))
+
+(defun perinf-core-people ()
+  "Show the Personal Work and Information System people view."
+  (interactive)
+  (perinf-core--show-view 'people))
 
 (defun perinf-core-records ()
   "Show the Personal Work and Information System records view."

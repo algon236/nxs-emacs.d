@@ -41,6 +41,9 @@
 (defalias 'perinf-meetings #'perinf-core-meetings)
 
 ;;;###autoload
+(defalias 'perinf-people #'perinf-core-people)
+
+;;;###autoload
 (defalias 'perinf-records #'perinf-core-records)
 
 ;;;###autoload
@@ -90,6 +93,9 @@
 
 ;;;###autoload
 (defalias 'perinf-create-person #'perinf-person-create)
+
+;;;###autoload
+(defalias 'perinf-create-person-group #'perinf-person-group-create)
 
 ;;;###autoload
 (defalias 'perinf-create-decision #'perinf-decision-create)

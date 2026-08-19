@@ -41,6 +41,8 @@
     (RATIONALE :type string :access user :required nil)
     (DECISION_ID :type identifier :access controlled :required nil)
     (ASSIGNEE_ID :type identifier :access controlled :required nil)
+    (ASSIGNEE_IDS :type identifier-list :access controlled :required nil)
+    (MEMBER_IDS :type identifier-list :access controlled :required nil)
     (GENERATION_METHOD :type enum :access system :required nil)
     (APPROVED_AT :type datetime :access system :required nil)
     (APPROVED_BY :type string :access controlled :required nil)

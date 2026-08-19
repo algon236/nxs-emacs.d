@@ -234,6 +234,47 @@
                    (MODIFIED_AT . ,now))
      :file file)))
 
+(defun perinf-storage--split-ids (value)
+  "Return the stable IDs encoded in VALUE."
+  (and value (split-string value "[ ,]+" t)))
+
+(defun perinf-storage--join-ids (ids)
+  "Encode stable IDS for an Org property."
+  (mapconcat #'identity (delete-dups (delq nil (copy-sequence ids))) " "))
+
+(defun perinf-storage--create-person-group (data project-directory)
+  "Create a person group from DATA in PROJECT-DIRECTORY."
+  (let* ((file (expand-file-name "data/people.org" project-directory))
+         (name (perinf-storage--safe-line (or (alist-get 'title data) "")))
+         (member-ids (or (alist-get 'member-ids data) nil))
+         (id (concat "person-group-" (org-id-uuid)))
+         (now (perinf-storage--iso-now)))
+    (when (string-empty-p name)
+      (user-error "Group name must not be empty"))
+    (dolist (person-id member-ids)
+      (unless (seq-find
+               (lambda (person) (equal (perinf-object-id person) person-id))
+               (perinf-storage-list 'person project-directory))
+        (signal 'perinf-object-not-found (list person-id))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (goto-char (point-max))
+      (unless (bolp) (insert "\n"))
+      (insert "\n* " name "\n"
+              ":PROPERTIES:\n"
+              ":ID:            " id "\n"
+              ":PERINF_TYPE:   person-group\n"
+              ":PERINF_STATUS: active\n"
+              ":MEMBER_IDS:    " (perinf-storage--join-ids member-ids) "\n"
+              ":CREATED_AT:    " now "\n"
+              ":MODIFIED_AT:   " now "\n"
+              ":END:\n")
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (make-perinf-object
+     :id id :type 'person-group :title name :status 'active
+     :properties `((MEMBER_IDS . ,(perinf-storage--join-ids member-ids)))
+     :file file)))
+
 (defun perinf-storage--create-decision (data project-directory)
   "Create a decision from DATA in PROJECT-DIRECTORY."
   (let* ((file (expand-file-name "data/decisions.org" project-directory))
@@ -328,6 +369,7 @@
       ('task (perinf-storage--create-task data project))
       ('meeting (perinf-storage--create-meeting data project))
       ('person (perinf-storage--create-person data project))
+      ('person-group (perinf-storage--create-person-group data project))
       ('decision (perinf-storage--create-decision data project))
       ('context (perinf-storage--create-context data project))
       (_ (signal 'perinf-storage-error
@@ -666,9 +708,7 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
          (tasks
           (seq-filter
            (lambda (task)
-             (equal
-              (alist-get 'ASSIGNEE_ID (perinf-object-properties task))
-              person-id))
+             (member person-id (perinf-storage-task-assignee-ids task)))
            (perinf-storage-list 'task project)))
          (meetings
           (seq-filter
@@ -712,6 +752,93 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
     (seq-find
      (lambda (person) (equal (perinf-object-id person) person-id))
      (perinf-storage-list 'person project))))
+
+(defun perinf-storage-update-person
+    (person-id name email phone &optional project-directory)
+  "Update PERSON-ID with NAME, EMAIL and PHONE in PROJECT-DIRECTORY."
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/people.org" project))
+         (safe-name (perinf-storage--safe-line name))
+         (safe-email (perinf-storage--safe-line email))
+         (safe-phone (perinf-storage--safe-line phone)))
+    (when (string-empty-p safe-name)
+      (user-error "Person name must not be empty"))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id person-id)
+        (signal 'perinf-object-not-found (list person-id)))
+      (unless (equal (org-entry-get nil "PERINF_TYPE") "person")
+        (signal 'perinf-storage-error (list "Object is not a person")))
+      (org-edit-headline safe-name)
+      (if (string-empty-p safe-email)
+          (org-entry-delete nil "EMAIL")
+        (org-entry-put nil "EMAIL" safe-email))
+      (if (string-empty-p safe-phone)
+          (org-entry-delete nil "PHONE")
+        (org-entry-put nil "PHONE" safe-phone))
+      (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now))
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find (lambda (person) (equal (perinf-object-id person) person-id))
+              (perinf-storage-list 'person project))))
+
+(defun perinf-storage-group-member-ids (group)
+  "Return the person IDs stored in GROUP."
+  (perinf-storage--split-ids
+   (alist-get 'MEMBER_IDS (perinf-object-properties group))))
+
+(defun perinf-storage-update-person-group
+    (group-id name member-ids &optional project-directory)
+  "Update GROUP-ID with NAME and MEMBER-IDS in PROJECT-DIRECTORY."
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/people.org" project))
+         (safe-name (perinf-storage--safe-line name)))
+    (when (string-empty-p safe-name)
+      (user-error "Group name must not be empty"))
+    (dolist (person-id member-ids)
+      (unless (seq-find
+               (lambda (person) (equal (perinf-object-id person) person-id))
+               (perinf-storage-list 'person project))
+        (signal 'perinf-object-not-found (list person-id))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id group-id)
+        (signal 'perinf-object-not-found (list group-id)))
+      (unless (equal (org-entry-get nil "PERINF_TYPE") "person-group")
+        (signal 'perinf-storage-error (list "Object is not a person group")))
+      (org-edit-headline safe-name)
+      (org-entry-put nil "MEMBER_IDS" (perinf-storage--join-ids member-ids))
+      (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now))
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find (lambda (group) (equal (perinf-object-id group) group-id))
+              (perinf-storage-list 'person-group project))))
+
+(defun perinf-storage-set-person-group-status
+    (group-id status &optional project-directory)
+  "Set GROUP-ID to active or inactive STATUS in PROJECT-DIRECTORY."
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/people.org" project)))
+    (unless (memq status '(active inactive))
+      (signal 'perinf-storage-error (list "Unsupported group status")))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id group-id)
+        (signal 'perinf-object-not-found (list group-id)))
+      (unless (equal (org-entry-get nil "PERINF_TYPE") "person-group")
+        (signal 'perinf-storage-error (list "Object is not a person group")))
+      (org-entry-put nil "PERINF_STATUS" (symbol-name status))
+      (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now))
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find (lambda (group) (equal (perinf-object-id group) group-id))
+              (perinf-storage-list 'person-group project))))
 
 (defun perinf-storage-delete-person (person-id &optional project-directory)
   "Permanently delete unreferenced PERSON-ID from PROJECT-DIRECTORY.
@@ -778,6 +905,7 @@ Signal an error when tasks or meetings still refer to the person."
                     `((DEADLINE . ,deadline)
                       (DECISION_ID . ,(org-entry-get nil "DECISION_ID"))
                       (ASSIGNEE_ID . ,(org-entry-get nil "ASSIGNEE_ID"))
+                      (ASSIGNEE_IDS . ,(org-entry-get nil "ASSIGNEE_IDS"))
                       (MEETING_ID . ,(org-entry-get nil "MEETING_ID"))
                       (MINUTES_ID . ,(org-entry-get nil "MINUTES_ID"))
                       (CONTEXT_ID . ,(org-entry-get nil "CONTEXT_ID"))
@@ -877,6 +1005,29 @@ Signal an error when tasks or meetings still refer to the person."
                (lambda (left right)
                  (string-lessp (perinf-object-title left)
                                (perinf-object-title right))))))
+      ('person-group
+       (let ((file (expand-file-name "data/people.org" project)) objects)
+         (unless (file-readable-p file)
+           (signal 'perinf-storage-error
+                   (list (format "Person storage is not readable: %s" file))))
+         (with-temp-buffer
+           (insert-file-contents file)
+           (org-mode)
+           (org-map-entries
+            (lambda ()
+              (when (equal (org-entry-get nil "PERINF_TYPE") "person-group")
+                (push
+                 (make-perinf-object
+                  :id (org-entry-get nil "ID")
+                  :type 'person-group
+                  :title (org-get-heading t t t t)
+                  :status (intern (or (org-entry-get nil "PERINF_STATUS") "active"))
+                  :properties `((MEMBER_IDS . ,(org-entry-get nil "MEMBER_IDS")))
+                  :file file :position (point))
+                 objects)))))
+         (sort objects (lambda (left right)
+                         (string-lessp (perinf-object-title left)
+                                       (perinf-object-title right))))))
       ('decision
        (let ((file (expand-file-name "data/decisions.org" project))
              objects)
@@ -1745,9 +1896,19 @@ The current minutes content is checksummed at submission time."
        (current-buffer) (perinf-object-file meeting)))
     (perinf-storage--meeting-by-id meeting-id project)))
 
+(defun perinf-storage-task-assignee-ids (task)
+  "Return all stable person IDs assigned to TASK, including legacy data."
+  (let ((properties (perinf-object-properties task)))
+    (delete-dups
+     (append
+      (perinf-storage--split-ids (alist-get 'ASSIGNEE_IDS properties))
+      (let ((legacy (alist-get 'ASSIGNEE_ID properties)))
+        (and legacy (list legacy)))))))
+
 (defun perinf-storage-assign-task
-    (task-id person-id &optional project-directory)
-  "Assign TASK-ID to PERSON-ID in PROJECT-DIRECTORY."
+    (task-id person-ids &optional project-directory)
+  "Assign TASK-ID to PERSON-IDS in PROJECT-DIRECTORY.
+PERSON-IDS may be one stable ID or a list of IDs."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1757,22 +1918,28 @@ The current minutes content is checksummed at submission time."
            (lambda (candidate)
              (equal (perinf-object-id candidate) task-id))
            (perinf-storage-list 'task project)))
-         (person
-          (seq-find
-           (lambda (candidate)
-             (equal (perinf-object-id candidate) person-id))
-           (perinf-storage-list 'person project)))
+         (ids (if (listp person-ids) person-ids (list person-ids)))
+         (people (perinf-storage-list 'person project))
          (file (expand-file-name "data/tasks.org" project)))
     (unless task
       (signal 'perinf-object-not-found (list task-id)))
-    (unless person
-      (signal 'perinf-object-not-found (list person-id)))
+    (unless ids
+      (user-error "At least one person must be assigned"))
+    (dolist (person-id ids)
+      (unless (seq-find
+               (lambda (candidate)
+                 (equal (perinf-object-id candidate) person-id))
+               people)
+        (signal 'perinf-object-not-found (list person-id))))
     (with-temp-buffer
       (insert-file-contents file)
       (org-mode)
       (unless (perinf-storage--find-id task-id)
         (signal 'perinf-object-not-found (list task-id)))
-      (org-entry-put nil "ASSIGNEE_ID" person-id)
+      (org-entry-put nil "ASSIGNEE_IDS" (perinf-storage--join-ids ids))
+      (if (= (length ids) 1)
+          (org-entry-put nil "ASSIGNEE_ID" (car ids))
+        (org-entry-delete nil "ASSIGNEE_ID"))
       (org-entry-put nil "MODIFIED_AT" (perinf-storage--iso-now))
       (perinf-storage--atomic-write-buffer (current-buffer) file))
     (seq-find
