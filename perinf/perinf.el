@@ -1,13 +1,30 @@
 ;;; perinf.el --- Org-backed work management core -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 Personal Work and Information System contributors
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
 
 ;; Author: Personal Work and Information System contributors
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
 ;; Version: 1.0.0
 ;; Package-Requires: ((emacs "29.1") (org "9.6"))
 ;; Keywords: outlines, calendar, convenience
 ;; URL: https://example.invalid/perinf
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -67,6 +84,12 @@
   "Stop TASK-ID's work timer."
   (interactive (list (perinf-task--select-timer-task nil)))
   (perinf-task-toggle-timer task-id nil))
+
+;;;###autoload
+(defun perinf-reset-task-timer (task-id)
+  "Reset TASK-ID's work timer without ending the task."
+  (interactive (list (perinf-task--select-open-task)))
+  (perinf-task-reset-timer task-id))
 
 ;;;###autoload
 (defalias 'perinf-associate-buffer-with-task #'perinf-task-associate-buffer)

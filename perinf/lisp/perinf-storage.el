@@ -1,6 +1,24 @@
 ;;; perinf-storage.el --- Storage API boundary for Personal Work and Information System -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -630,6 +648,37 @@ elapsed interval up to that time; this supports an exact inactivity boundary."
       (unless (perinf-storage--find-id id)
         (signal 'perinf-object-not-found (list id)))
       (perinf-storage--stop-task-timer-at-point stopped-at)
+      (perinf-storage--atomic-write-buffer (current-buffer) file))
+    (seq-find (lambda (object) (equal (perinf-object-id object) id))
+              (perinf-storage-list 'task project))))
+
+(defun perinf-storage-reset-task-timer (id &optional project-directory)
+  "Reset task ID's accumulated work time without changing its status.
+If the timer is running, restart its current interval at zero so it keeps
+running.  Use PROJECT-DIRECTORY for storage."
+  (let* ((project (or project-directory
+                      (signal 'perinf-storage-error
+                              '("No project directory supplied"))))
+         (file (expand-file-name "data/tasks.org" project)))
+    (unless (file-readable-p file)
+      (signal 'perinf-storage-error
+              (list (format "Task storage is not readable: %s" file))))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (org-mode)
+      (unless (perinf-storage--find-id id)
+        (signal 'perinf-object-not-found (list id)))
+      (unless (equal (org-entry-get nil "PERINF_TYPE") "task")
+        (signal 'perinf-storage-error
+                (list (format "Object is not a task: %s" id))))
+      (let* ((running (org-entry-get nil "TASK_TIMER_STARTED_AT"))
+             (now (perinf-storage--iso-now)))
+        (org-entry-put nil "TASK_WORK_SECONDS" "0")
+        (when running
+          (org-entry-put nil "TASK_TIMER_STARTED_AT" now)
+          (org-entry-put nil "TASK_LAST_ACTIVITY_AT" now)
+          (org-entry-put nil "TASK_LAST_ACTIVITY_RESOURCE" "PerInf timer"))
+        (org-entry-put nil "MODIFIED_AT" now))
       (perinf-storage--atomic-write-buffer (current-buffer) file))
     (seq-find (lambda (object) (equal (perinf-object-id object) id))
               (perinf-storage-list 'task project))))

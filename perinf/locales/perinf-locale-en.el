@@ -1,5 +1,23 @@
 ;;; perinf-locale-en.el --- English locale data -*- lexical-binding: t; -*-
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'en
@@ -30,6 +48,7 @@
    (action.start-task . "Start task")
    (action.start-task-timer . "Start timer")
    (action.stop-task-timer . "Stop timer")
+   (action.reset-task-timer . "Reset timer")
    (action.associate-task-buffer . "Associate open buffer or file")
    (action.wait-task . "Mark as waiting")
    (action.new-meeting . "Create meeting")
@@ -341,6 +360,8 @@
    (task.timer-running . "(timer running)")
    (task.timer-started . "The timer was started.")
    (task.timer-stopped . "The timer was stopped.")
+   (task.timer-reset-confirmation . "Reset the recorded work time? The task will continue, and a running timer will restart from zero. ")
+   (task.timer-reset . "The timer was reset.")
    (task.timer-auto-stopped . "The timer for “%s” was stopped automatically after %d minutes without recorded activity.")
    (task.timer-auto-stop-error . "Automatic timer check failed: %s")
    (task.work-time . "Total work time")

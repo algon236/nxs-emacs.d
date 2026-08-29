@@ -1,6 +1,24 @@
 ;;; perinf-core.el --- Main entry point for Personal Work and Information System -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
 
@@ -1110,6 +1128,14 @@ Keyboard button actions run COMMAND immediately."
                (button-get button 'perinf-task-timer-start-p)))
             'perinf-task-id (perinf-object-id object)
             'perinf-task-timer-start-p (not timer-started-at))
+           (insert "   ")
+           (perinf-core--insert-button
+            (perinf-i18n 'action.reset-task-timer)
+            (lambda (button)
+              (perinf-core--call-function-from-button
+               #'perinf-task-reset-timer
+               (button-get button 'perinf-task-id)))
+            'perinf-task-id (perinf-object-id object))
            (insert "   ")
            (perinf-core--insert-button
             (perinf-i18n 'action.associate-task-buffer)
