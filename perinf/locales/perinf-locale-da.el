@@ -1,5 +1,23 @@
 ;;; perinf-locale-da.el --- Danish locale data -*- lexical-binding: t; -*-
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'da
@@ -30,6 +48,7 @@
    (action.start-task . "Start opgave")
    (action.start-task-timer . "Start timer")
    (action.stop-task-timer . "Stop timer")
+   (action.reset-task-timer . "Nulstil timer")
    (action.associate-task-buffer . "Tilknyt åben buffer eller fil")
    (action.wait-task . "Markér som afventende")
    (action.new-meeting . "Opret møde")
@@ -341,6 +360,8 @@
    (task.timer-running . "(timeren kører)")
    (task.timer-started . "Timeren blev startet.")
    (task.timer-stopped . "Timeren blev stoppet.")
+   (task.timer-reset-confirmation . "Nulstil den registrerede arbejdstid? Opgaven fortsætter, og en kørende timer starter igen fra nul. ")
+   (task.timer-reset . "Timeren blev nulstillet.")
    (task.timer-auto-stopped . "Timeren for »%s« blev automatisk stoppet efter %d minutter uden registreret aktivitet.")
    (task.timer-auto-stop-error . "Automatisk kontrol af timere mislykkedes: %s")
    (task.work-time . "Samlet arbejdstid")

@@ -1,5 +1,23 @@
 ;;; perinf-locale-de.el --- German locale data -*- lexical-binding: t; -*-
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'de
@@ -30,6 +48,7 @@
    (action.start-task . "Aufgabe starten")
    (action.start-task-timer . "Timer starten")
    (action.stop-task-timer . "Timer stoppen")
+   (action.reset-task-timer . "Timer zurücksetzen")
    (action.associate-task-buffer . "Offenen Puffer oder Datei zuordnen")
    (action.wait-task . "Als wartend markieren")
    (action.new-meeting . "Sitzung erstellen")
@@ -341,6 +360,8 @@
    (task.timer-running . "(Timer läuft)")
    (task.timer-started . "Der Timer wurde gestartet.")
    (task.timer-stopped . "Der Timer wurde gestoppt.")
+   (task.timer-reset-confirmation . "Die erfasste Arbeitszeit zurücksetzen? Die Aufgabe bleibt aktiv, und ein laufender Timer beginnt wieder bei null. ")
+   (task.timer-reset . "Der Timer wurde zurückgesetzt.")
    (task.timer-auto-stopped . "Der Timer für „%s“ wurde nach %d Minuten ohne registrierte Aktivität automatisch gestoppt.")
    (task.timer-auto-stop-error . "Automatische Timerprüfung fehlgeschlagen: %s")
    (task.work-time . "Gesamte Arbeitszeit")

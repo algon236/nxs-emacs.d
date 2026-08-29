@@ -1,6 +1,24 @@
 ;;; perinf-task.el --- Task workflow for Personal Work and Information System -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
 
@@ -426,6 +444,17 @@ Each timer is stopped exactly at its last recorded activity plus
                                 'task.timer-stopped)))
   (when (fboundp 'perinf-core-work)
     (perinf-core-work)))
+
+(defun perinf-task-reset-timer (task-id)
+  "Reset TASK-ID's work timer after confirmation.
+The task remains active, and a running timer continues from zero."
+  (unless (and (boundp 'perinf-current-project) perinf-current-project)
+    (user-error "%s" (perinf-i18n 'home.no-project)))
+  (when (yes-or-no-p (perinf-i18n 'task.timer-reset-confirmation))
+    (perinf-storage-reset-task-timer task-id perinf-current-project)
+    (message "%s" (perinf-i18n 'task.timer-reset))
+    (when (fboundp 'perinf-core-work)
+      (perinf-core-work))))
 
 (provide 'perinf-task)
 

@@ -1,5 +1,23 @@
 ;;; perinf-locale-fr.el --- French locale data -*- lexical-binding: t; -*-
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'fr
@@ -30,6 +48,7 @@
    (action.start-task . "Démarrer la tâche")
    (action.start-task-timer . "Démarrer le minuteur")
    (action.stop-task-timer . "Arrêter le minuteur")
+   (action.reset-task-timer . "Réinitialiser le minuteur")
    (action.associate-task-buffer . "Associer un tampon ou fichier ouvert")
    (action.wait-task . "Marquer en attente")
    (action.new-meeting . "Créer une réunion")
@@ -341,6 +360,8 @@
    (task.timer-running . "(minuteur en cours)")
    (task.timer-started . "Le minuteur a démarré.")
    (task.timer-stopped . "Le minuteur a été arrêté.")
+   (task.timer-reset-confirmation . "Réinitialiser le temps de travail enregistré ? La tâche continuera et un minuteur en cours repartira de zéro. ")
+   (task.timer-reset . "Le minuteur a été réinitialisé.")
    (task.timer-auto-stopped . "Le minuteur de « %s » a été arrêté automatiquement après %d minutes sans activité enregistrée.")
    (task.timer-auto-stop-error . "Échec du contrôle automatique des minuteurs : %s")
    (task.work-time . "Temps de travail total")

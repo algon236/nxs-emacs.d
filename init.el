@@ -4261,5 +4261,12 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
              matches
              (if (= matches 1) "" "s"))))
 
+;; -----------------------------------------------------------------------------
+;; Emacs 31 testing packages
+;; -----------------------------------------------------------------------------
+(use-package card-games
+  :commands (card-games card-games-klondike card-games-bid card-games-hearts card-games-gin card-games-crapette))
+
+
 (provide 'init)
 ;;; init.el ends here

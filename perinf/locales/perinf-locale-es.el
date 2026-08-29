@@ -1,5 +1,23 @@
 ;;; perinf-locale-es.el --- Spanish locale data -*- lexical-binding: t; -*-
+;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
+;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+
 ;; SPDX-License-Identifier: GPL-3.0-or-later
+;;
+;; This file is part of Personal Work and Information System.
+;;
+;; Personal Work and Information System is free software: you can redistribute
+;; it and/or modify it under the terms of the GNU General Public License as
+;; published by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; Personal Work and Information System is distributed in the hope that it will
+;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+;; Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License along with
+;; this program.  If not, see <https://www.gnu.org/licenses/>.
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'es
@@ -30,6 +48,7 @@
    (action.start-task . "Iniciar tarea")
    (action.start-task-timer . "Iniciar temporizador")
    (action.stop-task-timer . "Detener temporizador")
+   (action.reset-task-timer . "Reiniciar temporizador")
    (action.associate-task-buffer . "Asociar búfer o archivo abierto")
    (action.wait-task . "Marcar en espera")
    (action.new-meeting . "Crear reunión")
@@ -341,6 +360,8 @@
    (task.timer-running . "(temporizador en marcha)")
    (task.timer-started . "El temporizador se inició.")
    (task.timer-stopped . "El temporizador se detuvo.")
+   (task.timer-reset-confirmation . "¿Reiniciar el tiempo de trabajo registrado? La tarea continuará y un temporizador en marcha volverá a empezar desde cero. ")
+   (task.timer-reset . "El temporizador se reinició.")
    (task.timer-auto-stopped . "El temporizador de «%s» se detuvo automáticamente después de %d minutos sin actividad registrada.")
    (task.timer-auto-stop-error . "Falló la comprobación automática de temporizadores: %s")
    (task.work-time . "Tiempo de trabajo total")
