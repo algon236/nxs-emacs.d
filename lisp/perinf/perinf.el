@@ -3,12 +3,12 @@
 ;; Copyright (C) 2026 Personal Work and Information System contributors
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
 
-;; Author: Personal Work and Information System contributors
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
-;; Version: 1.0.0
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
+;; Version: 1.0.1
 ;; Package-Requires: ((emacs "29.1") (org "9.6"))
 ;; Keywords: outlines, calendar, convenience
-;; URL: https://example.invalid/perinf
+;; URL: https://github.com/algon236/perinf
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
 ;; This file is part of Personal Work and Information System.
@@ -33,43 +33,39 @@
 
 ;;; Code:
 
-(let ((root (file-name-directory (or load-file-name buffer-file-name))))
-  (dolist (directory '("lisp" "schema" "locales"))
-    (add-to-list 'load-path (expand-file-name directory root))))
-
 (require 'perinf-core)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf "perinf" nil t)
 (defalias 'perinf #'perinf-core-open)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-project "perinf" nil t)
 (defalias 'perinf-create-project #'perinf-core-create-project)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-open-project "perinf" nil t)
 (defalias 'perinf-open-project #'perinf-core-select-project)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-home "perinf" nil t)
 (defalias 'perinf-home #'perinf-core-home)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-work "perinf" nil t)
 (defalias 'perinf-work #'perinf-core-work)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-meetings "perinf" nil t)
 (defalias 'perinf-meetings #'perinf-core-meetings)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-people "perinf" nil t)
 (defalias 'perinf-people #'perinf-core-people)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-records "perinf" nil t)
 (defalias 'perinf-records #'perinf-core-records)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-administration "perinf" nil t)
 (defalias 'perinf-administration #'perinf-core-administration)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-task "perinf" nil t)
 (defalias 'perinf-create-task #'perinf-task-create)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-complete-task "perinf" nil t)
 (defalias 'perinf-complete-task #'perinf-task-complete)
 
 ;;;###autoload
@@ -91,95 +87,95 @@
   (interactive (list (perinf-task--select-open-task)))
   (perinf-task-reset-timer task-id))
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-associate-buffer-with-task "perinf" nil t)
 (defalias 'perinf-associate-buffer-with-task #'perinf-task-associate-buffer)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-dissociate-buffer-from-task "perinf" nil t)
 (defalias 'perinf-dissociate-buffer-from-task
   #'perinf-task-dissociate-current-buffer)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-task-from-decision "perinf" nil t)
 (defalias 'perinf-create-task-from-decision
   #'perinf-task-create-from-decision)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-assign-task "perinf" nil t)
 (defalias 'perinf-assign-task #'perinf-task-assign)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-set-task-context "perinf" nil t)
 (defalias 'perinf-set-task-context #'perinf-task-set-context)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-meeting "perinf" nil t)
 (defalias 'perinf-create-meeting #'perinf-meeting-create)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-edit-meeting "perinf" nil t)
 (defalias 'perinf-edit-meeting #'perinf-meeting-edit)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-person "perinf" nil t)
 (defalias 'perinf-create-person #'perinf-person-create)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-person-group "perinf" nil t)
 (defalias 'perinf-create-person-group #'perinf-person-group-create)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-decision "perinf" nil t)
 (defalias 'perinf-create-decision #'perinf-decision-create)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-context "perinf" nil t)
 (defalias 'perinf-create-context #'perinf-context-create)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-create-decision-from-minutes "perinf" nil t)
 (defalias 'perinf-create-decision-from-minutes
   #'perinf-decision-create-from-minutes)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-search "perinf" nil t)
 (defalias 'perinf-search #'perinf-core-search)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-add-meeting-participant "perinf" nil t)
 (defalias 'perinf-add-meeting-participant
   #'perinf-meeting-add-participant)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-add-agenda-item "perinf" nil t)
 (defalias 'perinf-add-agenda-item
   #'perinf-meeting-add-agenda-item)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-attach-meeting-audio "perinf" nil t)
 (defalias 'perinf-attach-meeting-audio
   #'perinf-meeting-attach-audio)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-attach-meeting-document "perinf" nil t)
 (defalias 'perinf-attach-meeting-document
   #'perinf-meeting-attach-document)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-import-meeting-transcript "perinf" nil t)
 (defalias 'perinf-import-meeting-transcript
   #'perinf-meeting-import-transcript)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-import-generated-minutes "perinf" nil t)
 (defalias 'perinf-import-generated-minutes
   #'perinf-meeting-import-generated-minutes)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-approve-minutes "perinf" nil t)
 (defalias 'perinf-approve-minutes
   #'perinf-meeting-approve-minutes)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-submit-minutes "perinf" nil t)
 (defalias 'perinf-submit-minutes
   #'perinf-meeting-submit-minutes)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-edit-minutes "perinf" nil t)
 (defalias 'perinf-edit-minutes
   #'perinf-meeting-edit-minutes)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-reject-minutes "perinf" nil t)
 (defalias 'perinf-reject-minutes
   #'perinf-meeting-reject-minutes)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-start-meeting "perinf" nil t)
 (defalias 'perinf-start-meeting #'perinf-meeting-start)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-finish-meeting "perinf" nil t)
 (defalias 'perinf-finish-meeting #'perinf-meeting-finish)
 
-;;;###autoload
+;;;###autoload (autoload 'perinf-set-meeting-attendance "perinf" nil t)
 (defalias 'perinf-set-meeting-attendance
   #'perinf-meeting-set-attendance)
 

@@ -1,7 +1,8 @@
 ;;; perinf-meeting.el --- Meeting workflow for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,15 +21,23 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Meeting workflow for Personal Work and Information System.
+
 ;;; Code:
 
 (require 'perinf-date)
 (require 'perinf-i18n)
 (require 'perinf-person)
 (require 'perinf-storage)
+(require 'perinf-selection)
 (require 'perinf-time)
 (require 'seq)
 (require 'subr-x)
+
+(declare-function perinf-core-meetings "perinf-core" ())
+(declare-function perinf-core-show-object "perinf-core" (object))
 
 (defun perinf-meeting--setting (property)
   "Return PROPERTY from the current project metadata."
@@ -38,7 +47,7 @@
 
 ;;;###autoload
 (defun perinf-meeting-create ()
-  "Interactively create a meeting in the current Personal Work and Information System project."
+  "Interactively create a meeting in the current PerInf project."
   (interactive)
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))
@@ -237,7 +246,7 @@
           choices))))
 
 (defun perinf-meeting--read-agenda-text (prompt)
-  "Read required agenda text with an explicit empty-input cancel path."
+  "Read agenda text using PROMPT; return nil for empty input."
   (let ((value (string-trim (read-string prompt))))
     (unless (string-empty-p value) value)))
 
@@ -332,7 +341,7 @@
 
 (defun perinf-meeting-approve-minutes (minutes-id)
   "Ask for human confirmation and approve MINUTES-ID."
-  (interactive)
+  (interactive (list (perinf-selection-object 'minutes)))
   (unless perinf-current-project
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (when (yes-or-no-p (perinf-i18n 'minutes.approve-confirmation))
@@ -347,7 +356,7 @@
 
 (defun perinf-meeting-submit-minutes (minutes-id)
   "Submit MINUTES-ID for final human approval."
-  (interactive)
+  (interactive (list (perinf-selection-object 'minutes)))
   (unless perinf-current-project
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (when (yes-or-no-p (perinf-i18n 'minutes.submit-confirmation))
@@ -362,7 +371,7 @@
 
 (defun perinf-meeting-edit-minutes (minutes-id)
   "Open the Org file containing MINUTES-ID for human review."
-  (interactive)
+  (interactive (list (perinf-selection-object 'minutes)))
   (unless perinf-current-project
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (let ((minutes
@@ -379,7 +388,7 @@
 
 (defun perinf-meeting-reject-minutes (minutes-id)
   "Reject MINUTES-ID and record the human review decision."
-  (interactive)
+  (interactive (list (perinf-selection-object 'minutes)))
   (unless perinf-current-project
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (let* ((rejected-by
@@ -459,7 +468,20 @@
 (defun perinf-meeting-set-attendance
     (meeting-id participant-id attendance)
   "Set PARTICIPANT-ID attendance in MEETING-ID to ATTENDANCE."
-  (interactive)
+  (interactive
+   (let* ((meeting (perinf-meeting--select-meeting))
+          (participant (perinf-selection-from-objects
+                        (perinf-storage-list-children
+                         meeting 'participants perinf-current-project)))
+          (choices (mapcar
+                    (lambda (status)
+                      (cons (perinf-i18n
+                             (intern (format "attendance.%s" status))) status))
+                    '(invited attended absent excused))))
+     (list meeting participant
+           (cdr (assoc (completing-read
+                        (concat (perinf-i18n 'details.status) ": ") choices nil t)
+                       choices)))))
   (unless perinf-current-project
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (perinf-storage-set-attendance

@@ -1,7 +1,8 @@
 ;;; perinf-task.el --- Task workflow for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,12 +21,17 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Task workflow for Personal Work and Information System.
+
 ;;; Code:
 
 (require 'perinf-date)
 (require 'perinf-i18n)
 (require 'perinf-person)
 (require 'perinf-storage)
+(require 'perinf-selection)
 (require 'seq)
 
 (defcustom perinf-task-activity-write-interval 60
@@ -48,6 +54,9 @@
 
 (defvar-local perinf-task-activity-task-id nil
   "Stable PerInf task ID associated with the current buffer.")
+
+(defvar-local perinf-task-activity-project nil
+  "Project owning this buffer's task association.")
 
 (defvar-local perinf-task-activity-last-write nil
   "Time of the most recent persistent activity update from this buffer.")
@@ -106,12 +115,14 @@
         (let* ((resource (perinf-task--activity-resource))
                (matches (perinf-task--matching-resource-task-ids resource)))
           (when (= (length matches) 1)
-            (setq-local perinf-task-activity-task-id (car matches))))
+            (setq-local perinf-task-activity-task-id (car matches)
+                        perinf-task-activity-project perinf-current-project)))
       (error nil))))
 
 (defun perinf-task-record-buffer-activity ()
   "Record observed activity for the PerInf task associated with this buffer."
   (when (and perinf-task-activity-task-id
+             (equal perinf-task-activity-project perinf-current-project)
              (boundp 'perinf-current-project)
              perinf-current-project
              (or (not perinf-task-activity-last-write)
@@ -120,6 +131,7 @@
                                      perinf-task-activity-last-write))
                      perinf-task-activity-write-interval)))
     (let ((resource (perinf-task--activity-resource)))
+      (setq-local perinf-task-activity-last-write (current-time))
       (condition-case nil
           (when (perinf-storage-touch-task-activity
                  perinf-task-activity-task-id (car resource) (cdr resource)
@@ -200,6 +212,7 @@ Each timer is stopped exactly at its last recorded activity plus
        task-id (car resource) (cdr resource) t perinf-current-project)
       (with-current-buffer target
         (setq-local perinf-task-activity-task-id task-id
+                    perinf-task-activity-project perinf-current-project
                     perinf-task-activity-last-write nil)
         (perinf-task-record-buffer-activity))
       (message "%s" (perinf-i18n 'task.activity-buffer-associated)))))
@@ -214,8 +227,9 @@ Each timer is stopped exactly at its last recorded activity plus
   (let ((resource (perinf-task--activity-resource)))
     (perinf-storage-set-task-activity-resource
      perinf-task-activity-task-id (car resource) (cdr resource) nil
-     perinf-current-project)
-    (setq-local perinf-task-activity-task-id nil
+     (or perinf-task-activity-project perinf-current-project))
+    (setq-local perinf-task-activity-project nil
+                perinf-task-activity-task-id nil
                 perinf-task-activity-last-write nil)
     (message "%s" (perinf-i18n 'task.activity-buffer-dissociated))))
 
@@ -228,7 +242,8 @@ Each timer is stopped exactly at its last recorded activity plus
 (add-hook 'find-file-hook #'perinf-task-auto-associate-current-buffer)
 (add-hook 'after-change-major-mode-hook #'perinf-task-auto-associate-current-buffer)
 (add-hook 'post-command-hook #'perinf-task-record-buffer-activity)
-(perinf-task-install-inactivity-check)
+(unless noninteractive
+  (perinf-task-install-inactivity-check))
 
 (defun perinf-task--project-setting (project property)
   "Return PROPERTY from PROJECT metadata."
@@ -281,7 +296,7 @@ Each timer is stopped exactly at its last recorded activity plus
 
 (defun perinf-task-create-from-decision (decision-id)
   "Create a task sourced from DECISION-ID."
-  (interactive)
+  (interactive (list (perinf-selection-object 'decision)))
   (unless (seq-find
            (lambda (candidate)
              (equal (perinf-object-id candidate) decision-id))
@@ -296,7 +311,7 @@ Each timer is stopped exactly at its last recorded activity plus
 
 (defun perinf-task-assign (task-id)
   "Assign TASK-ID to a registered person or the current members of a group."
-  (interactive)
+  (interactive (list (perinf-selection-object 'task)))
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (perinf-storage-assign-task
@@ -325,7 +340,7 @@ Each timer is stopped exactly at its last recorded activity plus
 
 (defun perinf-task-set-context (task-id)
   "Place TASK-ID in a registered context."
-  (interactive)
+  (interactive (list (perinf-selection-object 'task)))
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (perinf-storage-set-task-context
@@ -420,7 +435,8 @@ Each timer is stopped exactly at its last recorded activity plus
     (format "%d:%02d:%02d" hours minutes remaining)))
 
 (defun perinf-task-total-work-seconds (task &optional now)
-  "Return TASK's accumulated work seconds, including its running interval."
+  "Return TASK's accumulated work seconds, including its running interval.
+Use NOW as the observation time when supplied."
   (let* ((properties (perinf-object-properties task))
          (stored (string-to-number
                   (or (alist-get 'TASK_WORK_SECONDS properties) "0")))
@@ -455,6 +471,16 @@ The task remains active, and a running timer continues from zero."
     (message "%s" (perinf-i18n 'task.timer-reset))
     (when (fboundp 'perinf-core-work)
       (perinf-core-work))))
+
+(defun perinf-task-unload-function ()
+  "Remove PerInf activity hooks and cancel its timer before unloading."
+  (remove-hook 'find-file-hook #'perinf-task-auto-associate-current-buffer)
+  (remove-hook 'after-change-major-mode-hook
+               #'perinf-task-auto-associate-current-buffer)
+  (remove-hook 'post-command-hook #'perinf-task-record-buffer-activity)
+  (when (timerp perinf-task-inactivity-check-timer)
+    (cancel-timer perinf-task-inactivity-check-timer))
+  nil)
 
 (provide 'perinf-task)
 

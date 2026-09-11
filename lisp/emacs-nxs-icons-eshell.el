@@ -16,6 +16,8 @@
 
 ;;; Code:
 
+(require 'emacs-nxs-icons)
+
 (use-package emacs-nxs-icons-eshell
   :if (memq 'eshell emacs-nxs-icon-modules)
   :ensure nil

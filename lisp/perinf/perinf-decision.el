@@ -1,7 +1,8 @@
 ;;; perinf-decision.el --- Decision workflow -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,12 +21,17 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Decision workflow.
+
 ;;; Code:
 
 (require 'seq)
 (require 'perinf-date)
 (require 'perinf-i18n)
 (require 'perinf-storage)
+(require 'perinf-selection)
 
 (defun perinf-decision--setting (property)
   "Return current project PROPERTY as a symbol."
@@ -90,7 +96,7 @@
 
 (defun perinf-decision-create-from-minutes (minutes-id)
   "Register a decision sourced from final-approved MINUTES-ID."
-  (interactive)
+  (interactive (list (perinf-selection-object 'minutes)))
   (let ((minutes
          (seq-find
           (lambda (candidate)

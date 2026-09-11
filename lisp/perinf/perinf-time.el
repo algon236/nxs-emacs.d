@@ -1,7 +1,8 @@
 ;;; perinf-time.el --- Time normalization for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,7 +21,15 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Time normalization for Personal Work and Information System.
+
 ;;; Code:
+
+(require 'perinf-i18n)
+
+(require 'subr-x)
 
 (defun perinf-time-normalize (text format)
   "Normalize time TEXT according to FORMAT and return HH:MM:SS.
@@ -32,24 +41,24 @@ An empty value returns nil."
         ('twenty-four-hour
          (unless (string-match
                   "\\`\\([0-9]\\{1,2\\}\\):\\([0-9]\\{2\\}\\)\\'" value)
-           (user-error "Time does not match HH:MM"))
+           (perinf-i18n-user-error "Time does not match HH:MM"))
          (setq hour (string-to-number (match-string 1 value))
                minute (string-to-number (match-string 2 value)))
          (unless (and (<= 0 hour 23) (<= 0 minute 59))
-           (user-error "Invalid time: %s" text)))
+           (perinf-i18n-user-error "Invalid time: %s" text)))
         ('twelve-hour
          (unless (string-match
                   "\\`\\([0-9]\\{1,2\\}\\):\\([0-9]\\{2\\}\\)[[:space:]]*\\(AM\\|PM\\)\\'"
                   value)
-           (user-error "Time does not match H:MM AM/PM"))
+           (perinf-i18n-user-error "Time does not match H:MM AM/PM"))
          (setq hour (string-to-number (match-string 1 value))
                minute (string-to-number (match-string 2 value)))
          (unless (and (<= 1 hour 12) (<= 0 minute 59))
-           (user-error "Invalid time: %s" text))
+           (perinf-i18n-user-error "Invalid time: %s" text))
          (when (= hour 12) (setq hour 0))
          (when (equal (match-string 3 value) "PM")
            (setq hour (+ hour 12))))
-        (_ (user-error "Unsupported time format: %S" format)))
+        (_ (perinf-i18n-user-error "Unsupported time format: %S" format)))
       (format "%02d:%02d:00" hour minute))))
 
 (defun perinf-time-format (iso-datetime format)

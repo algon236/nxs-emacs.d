@@ -1,7 +1,8 @@
 ;;; perinf-i18n.el --- Locale handling for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,6 +21,10 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Locale handling for Personal Work and Information System.
+
 ;;; Code:
 
 (require 'cl-lib)
@@ -29,13 +34,19 @@
   :group 'applications
   :prefix "perinf-")
 
-(defcustom perinf-interface-language 'en
+(defcustom perinf-interface-language 'da
   "Language used by the Personal Work and Information System interface."
   :type '(choice (const :tag "English" en)
                  (const :tag "Dansk" da)
                  (const :tag "Français" fr)
                  (const :tag "Deutsch" de)
                  (const :tag "Español" es))
+  :group 'perinf)
+
+(defcustom perinf-interface-language-override nil
+  "Local UI language overriding project metadata, or nil to follow the project."
+  :type '(choice (const :tag "Follow project" nil)
+                 (const da) (const en) (const fr) (const de) (const es))
   :group 'perinf)
 
 (defconst perinf-i18n-supported-locales '(en da fr de es)
@@ -60,6 +71,7 @@ TRANSLATIONS is an alist whose keys are language-independent symbols."
   "Return translation for KEY in LOCALE.
 English is the canonical fallback.  A visibly marked key is returned when
 neither locale contains a translation."
+  (perinf-i18n-load-locales)
   (let* ((requested (or locale perinf-interface-language))
          (table (gethash requested perinf-i18n--locales))
          (english (gethash 'en perinf-i18n--locales)))
@@ -73,6 +85,19 @@ neither locale contains a translation."
          (translated (mapcar #'car (gethash locale perinf-i18n--locales))))
     (list :missing (cl-set-difference canonical translated)
           :unknown (cl-set-difference translated canonical))))
+
+(defvar perinf-i18n-danish-errors nil
+  "Danish validation messages keyed by their canonical English format string.")
+
+(defun perinf-i18n-user-error (message &rest arguments)
+  "Signal a localized user error using MESSAGE and ARGUMENTS.
+Validation messages currently have Danish and canonical English versions."
+  (perinf-i18n-load-locales)
+  (apply #'user-error
+         (or (and (eq perinf-interface-language 'da)
+                  (cdr (assoc-string message perinf-i18n-danish-errors)))
+             message)
+         arguments))
 
 (provide 'perinf-i18n)
 

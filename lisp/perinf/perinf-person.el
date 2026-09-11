@@ -1,7 +1,8 @@
 ;;; perinf-person.el --- Person workflow for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,15 +21,20 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Person workflow for Personal Work and Information System.
+
 ;;; Code:
 
 (require 'perinf-i18n)
 (require 'perinf-storage)
+(require 'perinf-selection)
 (require 'seq)
 
 ;;;###autoload
 (defun perinf-person-create ()
-  "Interactively create a person in the current Personal Work and Information System project."
+  "Interactively create a person in the current PerInf project."
   (interactive)
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))
@@ -57,7 +63,7 @@
 
 (defun perinf-person-archive (person-id)
   "Archive PERSON-ID while preserving its historical references."
-  (interactive)
+  (interactive (list (perinf-selection-object 'person)))
   (let ((person (perinf-person--find person-id)))
     (when
         (yes-or-no-p
@@ -71,7 +77,7 @@
 
 (defun perinf-person-reactivate (person-id)
   "Reactivate archived PERSON-ID."
-  (interactive)
+  (interactive (list (perinf-selection-object 'person)))
   (let ((person (perinf-person--find person-id)))
     (when
         (yes-or-no-p
@@ -85,7 +91,7 @@
 
 (defun perinf-person-edit (person-id)
   "Interactively edit PERSON-ID without changing its stable ID."
-  (interactive)
+  (interactive (list (perinf-selection-object 'person)))
   (let* ((person (perinf-person--find person-id))
          (properties (perinf-object-properties person))
          (name (read-string (perinf-i18n 'person.name-prompt)
@@ -143,7 +149,7 @@ INITIAL-IDS are offered as the initial selection."
 
 (defun perinf-person-group-edit (group-id)
   "Interactively edit GROUP-ID and its members."
-  (interactive)
+  (interactive (list (perinf-selection-object 'person-group)))
   (let* ((group (perinf-person-group--find group-id))
          (name (read-string (perinf-i18n 'group.name-prompt)
                             (perinf-object-title group)))
@@ -157,7 +163,7 @@ INITIAL-IDS are offered as the initial selection."
 
 (defun perinf-person-group-archive (group-id)
   "Archive GROUP-ID while preserving it for later reactivation."
-  (interactive)
+  (interactive (list (perinf-selection-object 'person-group)))
   (let ((group (perinf-person-group--find group-id)))
     (when (yes-or-no-p
            (format (perinf-i18n 'group.archive-confirmation)
@@ -169,7 +175,7 @@ INITIAL-IDS are offered as the initial selection."
 
 (defun perinf-person-group-reactivate (group-id)
   "Reactivate archived GROUP-ID."
-  (interactive)
+  (interactive (list (perinf-selection-object 'person-group)))
   (perinf-storage-set-person-group-status
    group-id 'active perinf-current-project)
   (message "%s" (perinf-i18n 'group.reactivated))
@@ -207,7 +213,7 @@ INITIAL-IDS are offered as the initial selection."
 
 (defun perinf-person-delete (person-id)
   "Permanently delete unreferenced PERSON-ID after explicit confirmation."
-  (interactive)
+  (interactive (list (perinf-selection-object 'person)))
   (let* ((person (perinf-person--find person-id))
          (references
           (perinf-storage-person-references

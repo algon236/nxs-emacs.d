@@ -1,27 +1,34 @@
 ;;; perinf-locale-da.el --- Danish locale data -*- lexical-binding: t; -*-
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
-;; This file is part of Personal Work and Information System.
+;; This file is part of Personligt arbejds- og informationssystem.
 ;;
-;; Personal Work and Information System is free software: you can redistribute
+;; Personligt arbejds- og informationssystem is free software: you can redistribute
 ;; it and/or modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation, either version 3 of the License,
 ;; or (at your option) any later version.
 ;;
-;; Personal Work and Information System is distributed in the hope that it will
+;; Personligt arbejds- og informationssystem is distributed in the hope that it will
 ;; be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
 ;; Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
+;;; Commentary:
+
+;; Danish locale data.
+
+;;; Code:
+
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'da
- '((app.name . "Personal Work and Information System")
+ '((app.name . "Personligt arbejds- og informationssystem")
    (common.close . "Luk")
    (common.cancel . "Annullér")
    (common.error . "Fejl")
@@ -131,12 +138,12 @@
    (project.location . "Placering")
    (project.time-format . "Tidsformat")
    (project.create . "Opret projekt")
-   (project.created . "Personal Work and Information System-projektet blev oprettet.")
+   (project.created . "Personligt arbejds- og informationssystem-projektet blev oprettet.")
    (project.date-format-prompt . "Datoformat: ")
    (project.create-directory-prompt . "Mappe til nyt projekt: ")
    (project.language-prompt . "Brugerfladens sprog: ")
    (project.open . "Åbn projekt")
-   (project.open-directory-prompt . "Mappe med Personal Work and Information System-projekt: ")
+   (project.open-directory-prompt . "Mappe med Personligt arbejds- og informationssystem-projekt: ")
    (project.time-format-prompt . "Tidsformat: ")
    (project.title-prompt . "Projektets navn: ")
    (project.title . "Projekt")
@@ -379,5 +386,62 @@
    (work.approvals . "Referater til endelig godkendelse")
    (work.no-approvals . "Ingen referater afventer endelig godkendelse.")
    (work.title . "Arbejde")))
+(setq perinf-i18n-danish-errors
+      '(("Date input is not implemented for: %S" . "Datoindtastning understøttes ikke for: %S")
+        ("Date does not match the selected format" . "Datoen passer ikke til det valgte format")
+        ("Invalid date: %s" . "Ugyldig dato: %s")
+        ("Time does not match HH:MM" . "Klokkeslættet skal skrives som TT:MM")
+        ("Invalid time: %s" . "Ugyldigt klokkeslæt: %s")
+        ("Time does not match H:MM AM/PM" . "Klokkeslættet skal skrives som T:MM AM/PM")
+        ("Unsupported time format: %S" . "Tidsformatet understøttes ikke: %S")
+        ("Not a Personal Work and Information System project: %s" . "Dette er ikke et PerInf-projekt: %s")
+        ("This is not a Personal Work and Information System buffer" . "Dette er ikke en PerInf-buffer")
+        ("Personal Work and Information System project metadata is not readable: %s" . "Projektoplysningerne kan ikke læses: %s")
+        ("Personal Work and Information System project metadata has no heading: %s" . "Projektoplysningerne mangler en overskrift: %s")
+        ("Missing project metadata property: %s" . "Projektoplysningerne mangler egenskaben: %s")
+        ("Unsupported project schema version: %s" . "Projektets skemaversion understøttes ikke: %s")
+        ("Refusing to replace existing file: %s" . "Den eksisterende fil bliver ikke overskrevet: %s")
+        ("Project directory already exists: %s" . "Projektmappen findes allerede: %s")
+        ("Parent directory does not exist: %s" . "Den overordnede mappe findes ikke: %s")
+        ("Unsupported interface language: %S" . "Grænsefladens sprog understøttes ikke: %S")
+        ("Unsupported date format: %S" . "Datoformatet understøttes ikke: %S")
+        ("Project title must not be empty" . "Projektets titel må ikke være tom")
+        ("Save or revert unsaved changes before updating: %s" . "Gem eller forkast de ugemte ændringer før opdatering: %s")
+        ("Task title must not be empty" . "Opgavens titel må ikke være tom")
+        ("Meeting title must not be empty" . "Mødets titel må ikke være tom")
+        ("Meeting finish time must be after start time" . "Mødets sluttid skal ligge efter starttiden")
+        ("Person name must not be empty" . "Personens navn må ikke være tomt")
+        ("Group name must not be empty" . "Gruppens navn må ikke være tomt")
+        ("Decision title must not be empty" . "Beslutningens titel må ikke være tom")
+        ("Decision date must be a normalized ISO date" . "Beslutningens dato skal være en gyldig ISO-dato")
+        ("Context title must not be empty" . "Kontekstens titel må ikke være tom")
+        ("Activity resource must not be empty" . "Aktivitetsressourcen må ikke være tom")
+        ("Task timer is not running" . "Opgavens tidtager kører ikke")
+        ("Invalid task status transition: %s to %s" . "Opgavens status kan ikke ændres fra %s til %s")
+        ("Task must be active before its timer can start" . "Opgaven skal være aktiv, før tidtageren kan startes")
+        ("Task timer is already running" . "Opgavens tidtager kører allerede")
+        ("Meeting date and start time must not be empty" . "Mødets dato og starttid skal udfyldes")
+        ("Person is still referenced by %d task(s) and %d meeting(s)" . "Personen er stadig tilknyttet %d opgave(r) og %d møde(r)")
+        ("This meeting already has an audio recording" . "Mødet har allerede en lydoptagelse")
+        ("Attach an audio recording before importing a transcript" . "Vedhæft en lydoptagelse, før du importerer en transskription")
+        ("This meeting already has a raw transcript" . "Mødet har allerede en rå transskription")
+        ("The transcript file is empty" . "Transskriptionsfilen er tom")
+        ("Import a raw transcript before importing generated minutes" . "Importér en rå transskription, før du importerer et genereret referat")
+        ("This meeting already has minutes" . "Mødet har allerede et referat")
+        ("The minutes file is empty" . "Referatfilen er tom")
+        ("Minutes must be submitted for final approval before approval" . "Referatet skal indsendes til endelig godkendelse, før det kan godkendes")
+        ("The approver name must not be empty" . "Godkenderens navn skal udfyldes")
+        ("Minutes changed after submission; reject and resubmit them" . "Referatet er ændret efter indsendelsen; afvis det og indsend det igen")
+        ("Minutes cannot be submitted from their current status" . "Referatet kan ikke indsendes med sin nuværende status")
+        ("The submitter name must not be empty" . "Indsenderens navn skal udfyldes")
+        ("The reviewer name must not be empty" . "Kontrollantens navn skal udfyldes")
+        ("A rejection reason is required" . "En begrundelse for afvisningen skal udfyldes")
+        ("Invalid meeting status transition: %s to %s" . "Mødets status kan ikke ændres fra %s til %s")
+        ("At least one person must be assigned" . "Mindst én person skal tilknyttes")
+        ("Unsupported attendance status: %s" . "Fremmødestatus understøttes ikke: %s")
+        ("This person is already a participant" . "Personen er allerede deltager")
+        ("Agenda number and title are required" . "Dagsordenspunktets nummer og titel skal udfyldes")
+        ("This agenda number already exists" . "Dagsordensnummeret findes allerede")))
+
 (provide 'perinf-locale-da)
 ;;; perinf-locale-da.el ends here

@@ -1,7 +1,8 @@
 ;;; perinf-core.el --- Main entry point for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,7 +21,14 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Main entry point for Personal Work and Information System.
+
 ;;; Code:
+
+(require 'seq)
+(require 'subr-x)
 
 (require 'button)
 (require 'perinf-i18n)
@@ -37,11 +45,8 @@
 (require 'perinf-properties)
 (require 'perinf-statuses)
 
-(defconst perinf-version "1.0.0"
+(defconst perinf-version "1.0.1"
   "Current Personal Work and Information System application version.")
-
-(defvar perinf-current-project nil
-  "Directory of the current Personal Work and Information System project, or nil.")
 
 (defcustom perinf-last-project-directory nil
   "Most recently opened Personal Work and Information System project directory."
@@ -82,8 +87,18 @@ part of the persistent shared Org data."
 (defvar-local perinf-selected-object nil
   "Object displayed in the detail view of the current buffer.")
 
-(define-derived-mode perinf-mode special-mode "Personal Work and Information System"
+(define-derived-mode perinf-mode special-mode "PerInf"
   "Major mode for the Personal Work and Information System start page.")
+
+(defvar perinf-core--main-buffer nil
+  "The reusable PerInf UI buffer, independent of its translated name.")
+
+(defun perinf-core--buffer ()
+  "Return the main buffer, reusing it across language changes."
+  (unless (buffer-live-p perinf-core--main-buffer)
+    (setq perinf-core--main-buffer
+          (get-buffer-create (format "*%s*" (perinf-i18n 'app.name)))))
+  perinf-core--main-buffer)
 
 (defun perinf-core--insert-button (label action &rest properties)
   "Insert a button with LABEL and ACTION using PROPERTIES."
@@ -133,10 +148,14 @@ Keyboard button actions run COMMAND immediately."
           (make-string 72 ?─)
           "\n\n"))
 
+(defvar perinf-core--metadata-cache nil
+  "Project metadata cached for the duration of a single UI render.")
+
 (defun perinf-core--project-metadata ()
   "Return metadata for the current project, or nil."
   (when perinf-current-project
-    (perinf-storage-read-project perinf-current-project)))
+    (or perinf-core--metadata-cache
+        (perinf-storage-read-project perinf-current-project))))
 
 (defun perinf-core--metadata-value (property)
   "Return PROPERTY from current project metadata."
@@ -233,7 +252,7 @@ Keyboard button actions run COMMAND immediately."
 
 (defun perinf-core--render-dashboard-summary
     (tasks meetings people transcripts minutes)
-  "Insert a dashboard summary for the supplied core object collections."
+  "Insert a summary of TASKS, MEETINGS, PEOPLE, TRANSCRIPTS and MINUTES."
   (let ((open-tasks
          (perinf-core--sort-tasks
           (seq-filter
@@ -959,7 +978,7 @@ Keyboard button actions run COMMAND immediately."
     (user-error "%s" (perinf-i18n 'home.no-project)))
   (when (string-empty-p query)
     (user-error "%s" (perinf-i18n 'search.empty-query)))
-  (let ((buffer (get-buffer-create "*Personal Work and Information System*")))
+  (let ((buffer (perinf-core--buffer)))
     (with-current-buffer buffer
       (unless (derived-mode-p 'perinf-mode)
         (perinf-mode))
@@ -1879,7 +1898,7 @@ Keyboard button actions run COMMAND immediately."
 
 (defun perinf-core-show-object (object)
   "Show detail view for OBJECT."
-  (let ((buffer (get-buffer-create "*Personal Work and Information System*")))
+  (let ((buffer (perinf-core--buffer)))
     (with-current-buffer buffer
       (setq perinf-selected-object object
             perinf-current-view 'detail)
@@ -2028,7 +2047,11 @@ Keyboard button actions run COMMAND immediately."
 
 (defun perinf-core--render ()
   "Render the current Personal Work and Information System view."
-  (let ((inhibit-read-only t))
+  (let ((inhibit-read-only t)
+        (perinf-core--metadata-cache (perinf-core--project-metadata)))
+    (setq mode-name (perinf-i18n 'app.name))
+    (when (eq (current-buffer) perinf-core--main-buffer)
+      (rename-buffer (format "*%s*" (perinf-i18n 'app.name)) t))
     (erase-buffer)
     (insert (propertize (perinf-i18n 'app.name)
                         'face '(:height 1.5 :weight bold))
@@ -2068,7 +2091,7 @@ Keyboard button actions run COMMAND immediately."
 
 (defun perinf-core--show-view (view)
   "Show Personal Work and Information System VIEW in the main buffer."
-  (let ((buffer (get-buffer-create "*Personal Work and Information System*")))
+  (let ((buffer (perinf-core--buffer)))
     (with-current-buffer buffer
       (unless (derived-mode-p 'perinf-mode)
         (perinf-mode))
@@ -2082,8 +2105,8 @@ Keyboard button actions run COMMAND immediately."
 
 ;;;###autoload
 (defun perinf-core-open (&optional project-directory)
-  "Open the Personal Work and Information System start page.
-With PROJECT-DIRECTORY, display metadata from that Personal Work and Information System project."
+  "Open the PerInf start page.
+With PROJECT-DIRECTORY, display metadata from that PerInf project."
   (interactive)
   (perinf-i18n-load-locales)
   (perinf-core--load-state)
@@ -2094,8 +2117,8 @@ With PROJECT-DIRECTORY, display metadata from that Personal Work and Information
       (if (perinf-project-p candidate)
           (perinf-core--activate-project candidate)
         (when project-directory
-          (user-error "Not a Personal Work and Information System project: %s" candidate)))))
-  (let ((buffer (get-buffer-create "*Personal Work and Information System*")))
+          (perinf-i18n-user-error "Not a Personal Work and Information System project: %s" candidate)))))
+  (let ((buffer (perinf-core--buffer)))
     (with-current-buffer buffer
       (perinf-mode)
       (setq perinf-current-view 'home)
@@ -2133,7 +2156,7 @@ With PROJECT-DIRECTORY, display metadata from that Personal Work and Information
   (perinf-core--show-view 'administration))
 
 (defun perinf-core--load-state ()
-  "Load local Personal Work and Information System convenience state without evaluating code."
+  "Load local PerInf convenience state without evaluating code."
   (when (file-readable-p perinf-state-file)
     (condition-case nil
         (with-temp-buffer
@@ -2147,7 +2170,7 @@ With PROJECT-DIRECTORY, display metadata from that Personal Work and Information
 
 (defun perinf-core--save-state ()
   "Atomically save local Personal Work and Information System convenience state."
-  (let* ((directory (file-name-directory perinf-state-file))
+  (let* ((directory (file-name-directory (expand-file-name perinf-state-file)))
          (temporary nil))
     (make-directory directory t)
     (setq temporary
@@ -2166,24 +2189,26 @@ With PROJECT-DIRECTORY, display metadata from that Personal Work and Information
         (delete-file temporary)))))
 
 (defun perinf-core--activate-project (directory)
-  "Activate and validate the Personal Work and Information System project in DIRECTORY."
+  "Activate and validate the PerInf project in DIRECTORY."
   (let* ((normalized
           (file-name-as-directory (expand-file-name directory)))
          (metadata (perinf-project-read-metadata normalized))
          (language-name (alist-get 'INTERFACE_LANGUAGE metadata nil nil #'eq))
          (language (intern language-name)))
     (unless (perinf-project-p normalized)
-      (user-error "Not a Personal Work and Information System project: %s" normalized))
+      (perinf-i18n-user-error "Not a Personal Work and Information System project: %s" normalized))
     (setq perinf-current-project normalized
           perinf-last-project-directory normalized
-          perinf-interface-language language)
+          perinf-interface-language
+          (or perinf-interface-language-override language))
     (perinf-core--save-state)
     normalized))
 
 ;;;###autoload
 (defun perinf-core-create-project
     (directory title language date-format time-format)
-  "Interactively create and open a new Personal Work and Information System project."
+  "Create a project in DIRECTORY with TITLE and interface LANGUAGE.
+Use DATE-FORMAT and TIME-FORMAT for regional input and display."
   (interactive
    (let* ((directory
            (read-directory-name
@@ -2221,7 +2246,7 @@ With PROJECT-DIRECTORY, display metadata from that Personal Work and Information
 
 ;;;###autoload
 (defun perinf-core-select-project (directory)
-  "Select and open the existing Personal Work and Information System project in DIRECTORY."
+  "Select and open the existing PerInf project in DIRECTORY."
   (interactive
    (list
     (read-directory-name
@@ -2236,7 +2261,7 @@ With PROJECT-DIRECTORY, display metadata from that Personal Work and Information
   "Refresh the current Personal Work and Information System view."
   (interactive)
   (unless (derived-mode-p 'perinf-mode)
-    (user-error "This is not a Personal Work and Information System buffer"))
+    (perinf-i18n-user-error "This is not a Personal Work and Information System buffer"))
   (perinf-core--render))
 
 (provide 'perinf-core)

@@ -1,7 +1,8 @@
-;;; perinf-project-schema.el --- Project metadata schema -*- lexical-binding: t; -*-
+;;; perinf-statuses.el --- Status registry -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,16 +21,24 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Status registry.
+
 ;;; Code:
 
-(defconst perinf-current-schema-version 1
-  "Current persistent project schema version.")
+(defconst perinf-status-definitions
+  '((task open active waiting completed cancelled)
+    (person active inactive)
+    (person-group active inactive)
+    (meeting planned in-progress held postponed cancelled)
+    (audio-recording expected available missing processing transcribed failed)
+    (document available missing)
+    (transcript queued processing raw failed)
+    (minutes ai-draft manual-draft under-review secretary-approved
+             awaiting-final-approval final-approved rejected superseded))
+  "Language-independent statuses grouped by object type.")
 
-(defconst perinf-project-required-metadata
-  '(ID PERINF_TYPE PERINF_STATUS PROJECT_ID PROJECT_TITLE SCHEMA_VERSION
-       INTERFACE_LANGUAGE DATE_FORMAT TIME_FORMAT CREATED_AT)
-  "Required properties in `perinf-project.org'.")
+(provide 'perinf-statuses)
 
-(provide 'perinf-project-schema)
-
-;;; perinf-project-schema.el ends here
+;;; perinf-statuses.el ends here

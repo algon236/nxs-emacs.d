@@ -66,79 +66,130 @@
         (forward-line (1- previous-line-number)))))
 
 
-  (defun emacs-nxs/git-gutter-process-git-diff ()
-    "Process git diff for adds/mods/removals.
-Marks lines as added, deleted, or changed."
-    (interactive)
-    (let* ((result '())
-           (file-path (buffer-file-name))
-            (grep-command (if (executable-find "rg")
-                              "rg -Po"
-                            "grep -Po"))
-           (output (shell-command-to-string
-                    (format
-                     "git diff --unified=0 %s | %s '^@@ -[0-9]+(,[0-9]+)? \\+\\K[0-9]+(,[0-9]+)?(?= @@)'"
-                     (shell-quote-argument file-path)
-                     grep-command)))
-           (lines (split-string output "\n")))
-      (dolist (line lines)
-        (if (string-match "\\(^[0-9]+\\),\\([0-9]+\\)\\(?:,0\\)?$" line)
-            (let ((num (string-to-number (match-string 1 line)))
-                  (count (string-to-number (match-string 2 line))))
-              (if (= count 0)
-                  (push (cons (+ 1 num) "deleted") result)
-                (dotimes (i count)
-                  (push (cons (+ num i) "changed") result))))
-          (if (string-match "\\(^[0-9]+\\)$" line)
-              (push (cons (string-to-number line) "added") result))))
-      (setq-local git-gutter-diff-info result)
-      result))
+  (defvar-local emacs-nxs/git-gutter-timer nil)
+  (defvar-local git-gutter-diff-info nil)
 
+  (defun emacs-nxs/git-gutter-eligible-p ()
+    "Return the Git root for a local visited file, otherwise nil."
+    (and buffer-file-name (not (file-remote-p buffer-file-name))
+         (file-exists-p buffer-file-name)
+         (vc-git-root buffer-file-name)))
+
+  (defun emacs-nxs/git-gutter-parse-diff (text)
+    "Classify hunks in TEXT using both old and new line counts."
+    (let ((start 0) result)
+      (while (string-match
+              "^@@ -[0-9]+\\(?:,\\([0-9]+\\)\\)? +\\+\\([0-9]+\\)\\(?:,\\([0-9]+\\)\\)? @@"
+              text start)
+        (let ((old-count (if (match-string 1 text)
+                             (string-to-number (match-string 1 text)) 1))
+              (line (string-to-number (match-string 2 text)))
+              (new-count (if (match-string 3 text)
+                             (string-to-number (match-string 3 text)) 1)))
+          (if (zerop new-count)
+              (push (cons (max 1 line) "deleted") result)
+            (dotimes (offset new-count)
+              (push (cons (+ line offset)
+                          (if (zerop old-count) "added" "changed")) result))))
+        (setq start (match-end 0)))
+      (nreverse result)))
+
+  (defvar-local emacs-nxs/git-gutter-process nil)
+
+  (defun emacs-nxs/git-gutter-render (lines-status)
+    "Render LINES-STATUS in the current buffer without running external tools."
+    (remove-overlays (point-min) (point-max) 'emacs-nxs--git-gutter-overlay t)
+    (setq git-gutter-diff-info lines-status)
+    (save-excursion
+      (dolist (entry lines-status)
+        (goto-char (point-min))
+        (forward-line (1- (car entry)))
+        (let ((overlay (make-overlay (line-beginning-position) (line-beginning-position)))
+              (face (pcase (cdr entry)
+                      ("added" 'success) ("changed" 'warning) (_ 'error))))
+          (overlay-put overlay 'emacs-nxs--git-gutter-overlay t)
+          (overlay-put overlay 'before-string
+                       (propertize " " 'display
+                                   `((margin left-margin)
+                                     ,(propertize "┃" 'face face))))))))
+
+  (defun emacs-nxs/git-gutter-cancel-process ()
+    "Cancel an obsolete diff, without rendering its result."
+    (when (processp emacs-nxs/git-gutter-process)
+      (let ((proc emacs-nxs/git-gutter-process))
+        (setq emacs-nxs/git-gutter-process nil)
+        (when (process-live-p proc) (delete-process proc)))))
 
   (defun emacs-nxs/git-gutter-add-mark (&rest _args)
-    "Add symbols to the left margin based on Git diff statuses.
-- '+' for added lines (uses `success` face)
-- '~' for changed lines (uses `warning` face)
-- '-' for deleted lines (uses `error` face)."
+    "Refresh a local Git buffer asynchronously, using only the latest result."
     (interactive)
-    (remove-overlays (point-min) (point-max) 'emacs-nxs--git-gutter-overlay t)
-    (let ((lines-status (or (emacs-nxs/git-gutter-process-git-diff) '())))
-      (save-excursion
-        (dolist (line-status lines-status)
-          (let* ((line-num (car line-status))
-                 (status (cdr line-status))
-                 (symbol (cond                                ;; Alternatives:
-                          ((string= status "added")   "┃")    ;; +  │ ▏┃
-                          ((string= status "changed") "┃")    ;; ~  │ ▏┃
-                          ((string= status "deleted") "┃")))  ;; _  _‾ x
-                 (face (cond
-                        ((string= status "added")   'success)
-                        ((string= status "changed") 'warning)
-                        ((string= status "deleted") 'error))))
-            (when (and line-num status)
-              (goto-char (point-min))
-              (forward-line (1- line-num))
-              (let ((overlay (make-overlay (line-beginning-position) (line-beginning-position))))
-                (overlay-put overlay 'emacs-nxs--git-gutter-overlay t)
-                (overlay-put overlay 'before-string
-                             (propertize " "
-                                         'display
-                                         `((margin left-margin)
-                                           ,(propertize symbol 'face face)))))))))))
+    (emacs-nxs/git-gutter-cancel-process)
+    (emacs-nxs/git-gutter-render nil)
+    (when-let* ((root (emacs-nxs/git-gutter-eligible-p)))
+      (let* ((buf (current-buffer))
+             (file buffer-file-name)
+             (tick (buffer-chars-modified-tick))
+             (default-directory root)
+             (output (generate-new-buffer " *NXS git diff*")))
+        (condition-case err
+            (setq emacs-nxs/git-gutter-process
+                  (make-process
+                   :name "nxs-git-gutter" :buffer output :noquery t
+                   :connection-type 'pipe
+                   :command (list "git" "diff" "--no-ext-diff" "--no-color"
+                                  "--unified=0" "--" (file-relative-name file root))
+                   :sentinel
+                   (lambda (proc _event)
+                     (when (memq (process-status proc) '(exit signal))
+                       (unwind-protect
+                           (when (buffer-live-p buf)
+                             (with-current-buffer buf
+                               (when (eq proc emacs-nxs/git-gutter-process)
+                                 (setq emacs-nxs/git-gutter-process nil)
+                                 (when (and (eq (process-status proc) 'exit)
+                                            (zerop (process-exit-status proc))
+                                            (equal file buffer-file-name)
+                                            (= tick (buffer-chars-modified-tick)))
+                                   (emacs-nxs/git-gutter-render
+                                    (with-current-buffer output
+                                      (emacs-nxs/git-gutter-parse-diff (buffer-string))))))))
+                         (when (buffer-live-p output) (kill-buffer output)))))))
+          (error (kill-buffer output)
+                 (message "Git gutter: %s" (error-message-string err))))
+        (add-hook 'kill-buffer-hook #'emacs-nxs/git-gutter-cancel-process nil t))))
 
-  (defun emacs-nxs/timed-git-gutter-on()
-    (let ((buf (current-buffer)))
-      (run-at-time 0.1 nil (lambda ()
-                             (when (buffer-live-p buf)
-                               (with-current-buffer buf
-                                 (emacs-nxs/git-gutter-add-mark)))))))
+  (defun emacs-nxs/git-gutter-cancel-timer ()
+    "Cancel this buffer's pending refresh."
+    (when (timerp emacs-nxs/git-gutter-timer)
+      (cancel-timer emacs-nxs/git-gutter-timer))
+    (setq emacs-nxs/git-gutter-timer nil))
+
+  (defun emacs-nxs/timed-git-gutter-on ()
+    "Coalesce repeated refresh requests for a local Git buffer."
+    (emacs-nxs/git-gutter-cancel-timer)
+    (when (emacs-nxs/git-gutter-eligible-p)
+      (let ((buf (current-buffer)))
+        (setq emacs-nxs/git-gutter-timer
+              (run-with-idle-timer
+               0.2 nil
+               (lambda ()
+                 (when (buffer-live-p buf)
+                   (with-current-buffer buf
+                     (setq emacs-nxs/git-gutter-timer nil)
+                     (emacs-nxs/git-gutter-add-mark)))))))
+      (add-hook 'kill-buffer-hook #'emacs-nxs/git-gutter-cancel-timer nil t)))
 
   (defun emacs-nxs/git-gutter-off ()
     "Remove all `emacs-nxs--git-gutter-overlay' marks and other overlays."
     (interactive)
-    (remove-overlays (point-min) (point-max) 'emacs-nxs--git-gutter-overlay t)
+    (dolist (buf (buffer-list))
+      (with-current-buffer buf
+        (emacs-nxs/git-gutter-cancel-timer)
+        (emacs-nxs/git-gutter-cancel-process)
+        (setq git-gutter-diff-info nil)
+        (remove-overlays (point-min) (point-max) 'emacs-nxs--git-gutter-overlay t)))
     (remove-hook 'find-file-hook #'emacs-nxs/timed-git-gutter-on)
-    (remove-hook 'after-save-hook #'emacs-nxs/git-gutter-add-mark)
+    (remove-hook 'after-save-hook #'emacs-nxs/timed-git-gutter-on)
     (remove-hook 'after-revert-hook #'emacs-nxs/timed-git-gutter-on)
     (remove-function after-focus-change-function #'emacs-nxs/git-gutter-refresh-visible)
     (remove-hook 'window-selection-change-functions #'emacs-nxs/git-gutter-on-window-switch))
@@ -146,7 +197,7 @@ Marks lines as added, deleted, or changed."
   (defun emacs-nxs/git-gutter-on ()
     (interactive)
     (add-hook 'find-file-hook #'emacs-nxs/timed-git-gutter-on)
-    (add-hook 'after-save-hook #'emacs-nxs/git-gutter-add-mark)
+    (add-hook 'after-save-hook #'emacs-nxs/timed-git-gutter-on)
     (add-hook 'after-revert-hook #'emacs-nxs/timed-git-gutter-on)
     (add-function :after after-focus-change-function #'emacs-nxs/git-gutter-refresh-visible)
     (add-hook 'window-selection-change-functions #'emacs-nxs/git-gutter-on-window-switch)
