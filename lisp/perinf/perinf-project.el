@@ -1,7 +1,8 @@
 ;;; perinf-project.el --- Project metadata for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,14 +21,24 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Project metadata for Personal Work and Information System.
+
 ;;; Code:
+
+(require 'subr-x)
 
 (require 'org)
 (require 'org-id)
 (require 'perinf-project-schema)
+(require 'perinf-i18n)
+
+(defvar perinf-current-project nil
+  "Directory of the current Personal Work and Information System project, or nil.")
 
 (defconst perinf-project-metadata-file "perinf-project.org"
-  "File containing authoritative Personal Work and Information System project metadata.")
+  "File containing authoritative PerInf project metadata.")
 
 (defconst perinf-project-directories
   '("data" "data/meetings" "data/transcripts" "data/minutes"
@@ -43,7 +54,7 @@
   "Initial shared Org data files and their canonical English titles.")
 
 (defun perinf-project-p (directory)
-  "Return non-nil when DIRECTORY contains Personal Work and Information System project metadata."
+  "Return non-nil when DIRECTORY contains PerInf project metadata."
   (file-regular-p
    (expand-file-name perinf-project-metadata-file directory)))
 
@@ -52,13 +63,13 @@
 Return an alist with language-independent property names."
   (let ((file (expand-file-name perinf-project-metadata-file directory)))
     (unless (file-readable-p file)
-      (user-error "Personal Work and Information System project metadata is not readable: %s" file))
+      (perinf-i18n-user-error "Personal Work and Information System project metadata is not readable: %s" file))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (delay-mode-hooks (org-mode))
       (goto-char (point-min))
       (unless (re-search-forward org-heading-regexp nil t)
-        (user-error "Personal Work and Information System project metadata has no heading: %s" file))
+        (perinf-i18n-user-error "Personal Work and Information System project metadata has no heading: %s" file))
       (let ((metadata
              (mapcar
               (lambda (property)
@@ -67,7 +78,15 @@ Return an alist with language-independent property names."
               perinf-project-required-metadata)))
         (dolist (entry metadata)
           (unless (cdr entry)
-            (user-error "Missing project metadata property: %s" (car entry))))
+            (perinf-i18n-user-error "Missing project metadata property: %s" (car entry))))
+        (unless (equal (alist-get 'SCHEMA_VERSION metadata)
+                       (number-to-string perinf-current-schema-version))
+          (perinf-i18n-user-error "Unsupported project schema version: %s"
+                      (alist-get 'SCHEMA_VERSION metadata)))
+        (unless (member (alist-get 'INTERFACE_LANGUAGE metadata)
+                        (mapcar #'symbol-name perinf-i18n-supported-locales))
+          (perinf-i18n-user-error "Unsupported interface language: %S"
+                      (alist-get 'INTERFACE_LANGUAGE metadata)))
         metadata))))
 
 (defun perinf-project--iso-now ()
@@ -81,9 +100,9 @@ Return an alist with language-independent property names."
 (defun perinf-project--write-file (file content)
   "Write CONTENT to FILE, refusing to replace an existing file."
   (when (file-exists-p file)
-    (user-error "Refusing to replace existing file: %s" file))
+    (perinf-i18n-user-error "Refusing to replace existing file: %s" file))
   (let ((coding-system-for-write 'utf-8-unix))
-    (write-region content nil file nil 'silent)))
+    (write-region content nil file nil 'silent nil 'excl)))
 
 (defun perinf-project-create (directory title language date-format time-format)
   "Create a Personal Work and Information System project in DIRECTORY.
@@ -97,19 +116,20 @@ already exist.  Return the normalized project directory."
          (created-at (perinf-project--iso-now))
          (safe-title (perinf-project--safe-property-value title)))
     (when (file-exists-p target)
-      (user-error "Project directory already exists: %s" target))
+      (perinf-i18n-user-error "Project directory already exists: %s" target))
     (unless (file-directory-p parent)
-      (user-error "Parent directory does not exist: %s" parent))
+      (perinf-i18n-user-error "Parent directory does not exist: %s" parent))
     (unless (memq language '(en da fr de es))
-      (user-error "Unsupported interface language: %S" language))
+      (perinf-i18n-user-error "Unsupported interface language: %S" language))
     (unless (memq date-format
                   '(iso day-month-year-dash day-month-year-slash
                     month-day-year-slash localized-long))
-      (user-error "Unsupported date format: %S" date-format))
+      (perinf-i18n-user-error "Unsupported date format: %S" date-format))
     (unless (memq time-format '(twenty-four-hour twelve-hour))
-      (user-error "Unsupported time format: %S" time-format))
+      (perinf-i18n-user-error "Unsupported time format: %S" time-format))
     (when (string-empty-p safe-title)
-      (user-error "Project title must not be empty"))
+      (perinf-i18n-user-error "Project title must not be empty"))
+    (make-directory target)
     (condition-case error-data
         (progn
           (dolist (relative perinf-project-directories)

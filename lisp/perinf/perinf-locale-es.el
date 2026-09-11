@@ -1,6 +1,7 @@
 ;;; perinf-locale-es.el --- Spanish locale data -*- lexical-binding: t; -*-
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -18,6 +19,12 @@
 ;;
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
+;;; Commentary:
+
+;; Spanish locale data.
+
+;;; Code:
+
 (require 'perinf-i18n)
 (perinf-i18n-register-locale
  'es

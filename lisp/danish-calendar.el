@@ -111,32 +111,27 @@
        '("Efterårsjævndøgn" "Vintersolhverv"
          "Forårsjævndøgn" "Sommersolhverv"))))
 
-;; Moon phace names
-(defadvice lunar-phase-name (around da-lunar-phase-name activate)
-  "Phases of the moon in danish."
-  (setq ad-return-value
-    (let ((phase (ad-get-arg 0)))
-      (cond ((= 0 phase) "Nymåne")
-        ((= 1 phase) "Tiltagende Halvmåne")
-        ((= 2 phase) "Fuldmåne")
-        ((= 3 phase) "Aftagende Halvmåne")))))
+(with-eval-after-load 'lunar
+  (setq lunar-phase-names
+        '("Nymåne" "Tiltagende Halvmåne" "Fuldmåne" "Aftagende Halvmåne")))
 
-;; Sunrise and sunset
-(defadvice solar-sunrise-sunset-string (around da-solar-sunrise-sunset-string
-                           activate)
-  "Sunrise and sunset in danish."
-  (setq ad-return-value
-    (let ((l (solar-sunrise-sunset date)))
-      (format
-       "%s, %s i %s (%s timers dagslys)"
-       (if (car l)
-           (concat "Sol op " (apply 'solar-time-string (car l)))
-         "Ingen solopgang")
-       (if (car (cdr l))
-           (concat "ned " (apply 'solar-time-string (car (cdr l))))
-         "ingen solnedgang")
-       (eval calendar-location-name)
-       (car (cdr (cdr l)))))))
+(defun emacs-nxs/solar-sunrise-sunset-string (date &optional nolocation)
+  "Dansk solopgang og solnedgang for DATE; respekter NOLOCATION."
+  (let ((times (solar-sunrise-sunset date)))
+    (format "%s, %s%s (%s timers dagslys)"
+            (if (car times)
+                (concat "Sol op " (apply #'solar-time-string (car times)))
+              "Ingen solopgang")
+            (if (cadr times)
+                (concat "ned " (apply #'solar-time-string (cadr times)))
+              "ingen solnedgang")
+            (if nolocation ""
+              (format " i %s" (eval calendar-location-name t)))
+            (nth 2 times))))
+
+(with-eval-after-load 'solar
+  (advice-add 'solar-sunrise-sunset-string :override
+              #'emacs-nxs/solar-sunrise-sunset-string))
 
 
 ;; Adapted from http://stackoverflow.com/questions/21364948/how-to-align-the-calendar-with-week-number-as-the-intermonth-text

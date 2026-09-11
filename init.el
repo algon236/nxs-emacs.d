@@ -2,7 +2,7 @@
 ;;
 ;; Author: Rahul Martim Juliato
 ;; URL: https://github.com/LionyxML/emacs-solo
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "32.0.50"))
 ;; Keywords: config
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -72,13 +72,38 @@
 (package-initialize)
 
 (setq use-package-always-ensure nil)
+(defconst emacs-nxs-required-packages
+  '(auctex card-games casual dired-subtree eat nerd-icons nerd-icons-dired
+    org-draw org-modern org-roam org-roam-ui pdf-tools)
+  "External packages used by this configuration; dependencies install with them.")
+
+(defun emacs-nxs/install-missing-packages ()
+  "Install missing NXS packages explicitly, rather than during ordinary startup."
+  (interactive)
+  (let ((missing (seq-remove #'package-installed-p emacs-nxs-required-packages)))
+    (when missing
+      (package-refresh-contents)
+      (mapc #'package-install missing))
+    (message "NXS packages installed; restart Emacs to load missing features")))
+
+(defun emacs-nxs/package-ensure (name ensure _state)
+  "Check NAME and ENSURE without network activity during startup."
+  (dolist (package ensure)
+    (let ((package (if (eq package t) name package)))
+      (unless (or (null package) (package-installed-p package)
+                  (package-built-in-p package))
+        (display-warning 'emacs-nxs
+                         (format "Missing %s; run M-x emacs-nxs/install-missing-packages"
+                                 package) :warning)))))
+(setq use-package-ensure-function #'emacs-nxs/package-ensure)
 (if nec/measure-time (nec/stimer "init: package"))
 
 ;;; ┌──────────────────── EMACS NXS CUSTOM OPTIONS
 ;;
 ;;  Some features Emacs NXS provides you can turn on/off
 (use-package eat
-   :ensure t)
+  :ensure t
+  :commands (eat eat-other-window))
 ;;NS debug
 ;; (setq debug-on-error t)
 
@@ -410,7 +435,7 @@ parent directory created."
   :custom
   (ad-redefinition-action 'accept)
   (auto-save-default t)
-  (bookmark-file (locate-user-emacs-file "var/bookmarks"))
+  (bookmark-default-file (locate-user-emacs-file "var/bookmarks"))
   (shared-game-score-directory (emacs-nxs--cache-path 'shared-game-score-directory)) ; FIXME: is this even working?
   (calendar-latitude 55.9386)                   ;; These are needed
   (calendar-longitude 12.5053)                  ;; for M-x `sunrise-sunset'
@@ -428,7 +453,6 @@ parent directory created."
   (display-line-numbers-widen t)
   (display-fill-column-indicator-warning nil) ; EMACS-31
   (delete-selection-mode t)
-  (enable-recursive minibuffers t)
   (ffap-machine-p-known 'reject)
   (find-ls-option '("-exec ls -ldh {} +" . "-ldh"))  ; find-dired results with human readable sizes
   (frame-resize-pixelwise t)
@@ -706,9 +730,12 @@ parent directory created."
 
 
   ;; So eshell git commands open an instance of THIS config of Emacs
-  (setenv "GIT_EDITOR" (format "emacs --init-dir=%s " (shell-quote-argument user-emacs-directory)))
-  (setenv "JJ_EDITOR" (format "emacs --init-dir=%s " (shell-quote-argument user-emacs-directory)))
-  (setenv "EDITOR" (format "emacs --init-dir=%s " (shell-quote-argument user-emacs-directory)))
+  (let* ((client (expand-file-name "emacsclient" exec-directory))
+         (client (if (file-executable-p client) client
+                   (or (executable-find "emacsclient") "emacsclient")))
+         (editor (concat (shell-quote-argument client) " --alternate-editor=false")))
+    (dolist (variable '("GIT_EDITOR" "JJ_EDITOR" "EDITOR"))
+      (setenv variable editor)))
   (setenv "PAGER" "cat")
   ;; So rebase from eshell opens with a bit of syntax highlight
   (add-to-list 'auto-mode-alist '("/git-rebase-todo\\'" . conf-mode))
@@ -815,8 +842,8 @@ or is an ERC buffer."
   (add-hook 'window-configuration-change-hook #'emacs-nxs/set-default-window-margins)
 
   (when (>= emacs-major-version 31)
-    (tty-tip-mode nil))   ;; EMACS-31
-  (tooltip-mode nil)
+    (tty-tip-mode -1))   ;; EMACS-31
+  (tooltip-mode -1)
 
   (select-frame-set-input-focus (selected-frame))
   (blink-cursor-mode 0)
@@ -1303,10 +1330,11 @@ If ###@### is found, remove it and place point there at the end."
   (compilation-scroll-output t)
   (ansi-color-for-compilation-mode t)
   :config
-  ;; Not ideal, but I do not want this poluting the mode-line
-  (defun emacs-nxs/ignore-compilation-status (&rest _)
-    (setq compilation-in-progress nil))
-  (advice-add 'compilation-start :after #'emacs-nxs/ignore-compilation-status)
+  ;; Hide only the indicator; keep compile.el's process bookkeeping intact.
+  (setq mode-line-modes
+        (cl-remove-if (lambda (item)
+                        (and (consp item) (eq (car item) 'compilation-in-progress)))
+                      mode-line-modes))
 
   (add-hook 'compilation-filter-hook #'ansi-color-compilation-filter))
 
@@ -1367,7 +1395,6 @@ If ###@### is found, remove it and place point there at the end."
   :custom
   (tab-bar-new-tab-choice "*Start*")
   (tab-bar-close-button-show nil)
-  (tab-bar-new-button-show nil)
   (tab-bar-tab-hints t)
   (tab-bar-auto-width nil)
   (tab-bar-separator "")
@@ -1474,251 +1501,11 @@ Uses position instead of index field."
       (advice-add 'completion-at-point
           :after #'minibuffer-hide-completions))
 
-  ;; https://lists.gnu.org/archive/html/bug-gnu-emacs/2025-03/msg02638.html
-  ;;
-  ;; Patch is now part of EMACS-31 bug#75784 (bug-gnu-emacs).
-  ;;
-  ;; FIXME: Delete this giant block when new emacs becomes the current
-  ;; release
-  (when (or (< emacs-major-version 31)
-        (not (boundp 'icomplete-vertical-in-buffer-adjust-list)))
 
-    (defface icomplete-vertical-selected-prefix-indicator-face
-      '((t :inherit font-lock-keyword-face :weight bold :foreground "cyan"))
-      "Face used for the prefix set by `icomplete-vertical-selected-prefix-indicator'."
-      :group 'icomplete
-      :version "31.1")
-
-    (defface icomplete-vertical-unselected-prefix-indicator-face
-      '((t :inherit font-lock-keyword-face :weight normal :foreground "gray"))
-      "Face used for the prefix set by `icomplete-vertical-unselected-prefix-indicator'."
-      :group 'icomplete
-      :version "31.1")
-
-    (defcustom icomplete-vertical-in-buffer-adjust-list t
-      "Control whether in-buffer completion should align the cursor position.
-If this is t and `icomplete-in-buffer' is t, and `icomplete-vertical-mode'
-is activated, the in-buffer vertical completions are shown aligned to the
-cursor position when the completion started, not on the first column, as
-the default behaviour."
-      :type 'boolean
-      :group 'icomplete
-      :version "31.1")
-
-    (defcustom icomplete-vertical-render-prefix-indicator t
-      "Control whether a indicator is added as a prefix to each candidate.
-If this is t and `icomplete-vertical-mode' is activated, a indicator,
-controlled by `icomplete-vertical-selected-prefix-indicator' is shown
-as a prefix to the current under selection candidate, while the
-remaining of the candidates will receive the indicator controlled
-by `icomplete-vertical-unselected-prefix-indicator'."
-      :type 'boolean
-      :group 'icomplete
-      :version "31.1")
-
-    (defcustom icomplete-vertical-selected-prefix-indicator "» "
-      "Prefix string used to mark the selected completion candidate.
-If `icomplete-vertical-render-prefix-indicator' is t, the string
-defined here is used as a prefix of the currently selected entry in the
-list.  It can be further customized by the face
-`icomplete-vertical-selected-prefix-indicator-face'."
-      :type 'string
-      :group 'icomplete
-      :version "31.1")
-
-    (defcustom icomplete-vertical-unselected-prefix-indicator "  "
-      "Prefix string used on the unselected completion candidates.
-If `icomplete-vertical-render-prefix-indicator' is t, the string
-defined here is used as a prefix for all unselected entries in the list.
-list.  It can be further customized by the face
-`icomplete-vertical-unselected-prefix-indicator-face'."
-      :type 'string
-      :group 'icomplete
-      :version "31.1")
-
-    ;; FIXME: make this into PATCH
-    (defun icomplete-vertical--adjust-lines-for-column (lines buffer data)
-      "Adjust the LINES to align with the column in BUFFER based on DATA."
-      (if icomplete-vertical-in-buffer-adjust-list
-      (let* ((column (current-column))
-         (prefix-indicator-width
-          (if icomplete-vertical-render-prefix-indicator
-              (max (length icomplete-vertical-selected-prefix-indicator)
-               (length icomplete-vertical-unselected-prefix-indicator))
-            0))
-         (wrapped-line (with-current-buffer buffer
-                 (save-excursion
-                   (goto-char (car data))
-                   (beginning-of-line)
-                   (count-screen-lines (point) (car data)))))
-         (window-width (+ (window-hscroll) (window-body-width)))
-         (longest-line-width (apply #'max (mapcar #'length lines)))
-         (spaces-to-add
-          (if (> wrapped-line 1)
-              (- column (* (- wrapped-line 1) (- window-width 5)))
-            column))
-         (spaces-to-add-avoiding-scrolling
-          (if (>= (+ spaces-to-add longest-line-width prefix-indicator-width) window-width)
-              (- spaces-to-add longest-line-width)
-            spaces-to-add)))
-
-        (mapcar (lambda (line)
-              (concat (make-string spaces-to-add-avoiding-scrolling ?\s) line))
-            lines))
-    lines))
-
-    ;; FIXME: remove this after patch
-    (defun icomplete-vertical--ensure-visible-lines-inside-buffer ()
-      "Ensure the completion list is visible in regular buffers only.
-Scrolls the screen to be at least `icomplete-prospects-height' real lines
-away from the bottom.  Counts wrapped lines as real lines."
-      (unless (minibufferp)
-    (let* ((window-height (window-body-height))
-           (current-line (count-screen-lines (window-start) (point)))
-           (lines-to-bottom (- window-height current-line)))
-      (when (< lines-to-bottom icomplete-prospects-height)
-        (scroll-up (- icomplete-prospects-height lines-to-bottom))))))
-
-
-    (defun icomplete-vertical--add-indicator-to-selected (comp)
-      "Add indicators to the selected/unselected COMP completions."
-      (if (and icomplete-vertical-render-prefix-indicator
-           (get-text-property 0 'icomplete-selected comp))
-      (concat (propertize icomplete-vertical-selected-prefix-indicator
-                  'face 'icomplete-vertical-selected-prefix-indicator-face)
-          comp)
-    (concat (propertize icomplete-vertical-unselected-prefix-indicator
-                'face 'icomplete-vertical-unselected-prefix-indicator-face)
-        comp)))
-
-
-    (cl-defun icomplete--render-vertical
-    (comps md &aux scroll-above scroll-below
-           (total-space ; number of mini-window lines available
-        (1- (min
-             icomplete-prospects-height
-             (truncate (max-mini-window-lines) 1)))))
-      ;; Welcome to loopapalooza!
-      ;;
-      ;; First, be mindful of `icomplete-scroll' and manual scrolls.  If
-      ;; `icomplete--scrolled-completions' and `icomplete--scrolled-past'
-      ;; are:
-      ;;
-      ;; - both nil, there is no manual scroll;
-      ;; - both non-nil, there is a healthy manual scroll that doesn't need
-      ;;   to be readjusted (user just moved around the minibuffer, for
-      ;;   example);
-      ;; - non-nil and nil, respectively, a refiltering took place and we
-      ;;   may need to readjust them to the new filtered `comps'.
-      (when (and icomplete-scroll                                    ;; FIXME: remove this after patch
-         (not icomplete--scrolled-completions)
-         (not icomplete--scrolled-past))
-    (icomplete-vertical--ensure-visible-lines-inside-buffer))
-      (when (and icomplete-scroll
-         icomplete--scrolled-completions
-         (null icomplete--scrolled-past))
-    (icomplete-vertical--ensure-visible-lines-inside-buffer)     ;; FIXME: remove this after patch
-    (cl-loop with preds
-         for (comp . rest) on comps
-         when (equal comp (car icomplete--scrolled-completions))
-         do
-         (setq icomplete--scrolled-past preds
-               comps (cons comp rest))
-         (completion--cache-all-sorted-completions
-          (icomplete--field-beg)
-          (icomplete--field-end)
-          comps)
-         and return nil
-         do (push comp preds)
-         finally (setq icomplete--scrolled-completions nil)))
-      ;; Then, in this pretty ugly loop, collect completions to display
-      ;; above and below the selected one, considering scrolling
-      ;; positions.
-      (cl-loop with preds = icomplete--scrolled-past
-           with succs = (cdr comps)
-           with space-above = (- total-space
-                     1
-                     (cl-loop for (_ . r) on comps
-                          repeat (truncate total-space 2)
-                          while (listp r)
-                          count 1))
-           repeat total-space
-           for neighbor = nil
-           if (and preds (> space-above 0)) do
-           (push (setq neighbor (pop preds)) scroll-above)
-           (cl-decf space-above)
-           else if (consp succs) collect
-           (setq neighbor (pop succs)) into scroll-below-aux
-           while neighbor
-           finally (setq scroll-below scroll-below-aux))
-      ;; Halfway there...
-      (let* ((selected (propertize (car comps) 'icomplete-selected t))
-         (chosen (append scroll-above (list selected) scroll-below))
-         (tuples (icomplete--augment md chosen))
-         max-prefix-len max-comp-len lines nsections)
-    (add-face-text-property 0 (length selected)
-                'icomplete-selected-match 'append selected)
-    ;; Figure out parameters for horizontal spacing
-    (cl-loop
-     for (comp prefix) in tuples
-     maximizing (length prefix) into max-prefix-len-aux
-     maximizing (length comp) into max-comp-len-aux
-     finally (setq max-prefix-len max-prefix-len-aux
-               max-comp-len max-comp-len-aux))
-    ;; Serialize completions and section titles into a list
-    ;; of lines to render
-    (with-no-warnings
-      (cl-loop
-       for (comp prefix suffix section) in tuples
-       when section
-       collect (propertize section 'face 'icomplete-section) into lines-aux
-       and count 1 into nsections-aux
-       for comp = (icomplete-vertical--add-indicator-to-selected comp)
-       when (get-text-property 0 'icomplete-selected comp)
-       do (add-face-text-property 0 (length comp)
-                      'icomplete-selected-match 'append comp)
-       collect (concat prefix
-               (make-string (max 0 (- max-prefix-len (length prefix))) ? )
-               (completion-lazy-hilit comp)
-               (make-string (max 0 (- max-comp-len (length comp))) ? )
-               suffix)
-       into lines-aux
-       finally (setq lines lines-aux
-             nsections nsections-aux)))
-    ;; Kick out some lines from the beginning due to extra sections.
-    ;; This hopes to keep the selected entry more or less in the
-    ;; middle of the dropdown-like widget when `icomplete-scroll' is
-    ;; t.  Funky, but at least I didn't use `cl-loop'
-    (setq lines
-          (nthcdr
-           (cond ((<= (length lines) total-space) 0)
-             ((> (length scroll-above) (length scroll-below)) nsections)
-             (t (min (ceiling nsections 2) (length scroll-above))))
-           lines))
-    (when icomplete--in-region-buffer
-      (setq lines (icomplete-vertical--adjust-lines-for-column
-               lines icomplete--in-region-buffer completion-in-region--data)))
-    ;; At long last, render final string return value.  This may still
-    ;; kick out lines at the end.
-    (concat " \n"
-        (cl-loop for l in lines repeat total-space concat l concat "\n")))))
 
   ;; end use-package
   )
 
-
-;;; Nerd Icons til Dired
-(use-package nerd-icons
-  :if (display-graphic-p))
-
-(use-package nerd-icons-dired
-  :after (nerd-icons dired)
-  :hook (dired-mode . nerd-icons-dired-mode)
-  :config
-  (setq minor-mode-alist
-        (assq-delete-all 'nerd-icons-dired-mode minor-mode-alist))
-  (push '(nerd-icons-dired-mode " Nerd-Icons")
-        minor-mode-alist))
 
 ;;; │ DIRED
 (use-package dired
@@ -1726,16 +1513,12 @@ away from the bottom.  Counts wrapped lines as real lines."
   :bind
   (("M-i" . emacs-nxs/window-dired-vc-root-left)
    :map dired-mode-map
-   ("C-o" . casual-dired-tmenu)
-   ("TAB" . dired-hide-details-mode)
-   ("<tab>" . dired-hide-details-mode))
+   ("C-o" . casual-dired-tmenu))
   :custom
   (dired-auto-revert-buffer t)
   (dired-dwim-target t)
   (dired-garbage-files-regexp     ;;NS insert
-   "\\(?:\\.\\(?:aux\\|bak\\|bcf\\|blg\\|bbl\\|brf\\|dat\\|dep\\|dvi\\|entoc\\|fdb_latexmk
-    \\|fls\\|idx\\|ilg\\|ind\\|lof\\|log\\|lot\\|nav\\|out\\|profiler.*\\.dat\\|ps\\|rej
-    \\|run\\.xml\\|snm\\|spl\\|synctex\\.gz\\|toc\\|upa\\|upb\\|vrb\\|w18\\)\\|-blx\\.bib\\)\\'")
+   "\\(?:\\.\\(?:aux\\|bak\\|bcf\\|blg\\|bbl\\|brf\\|dat\\|dep\\|dvi\\|entoc\\|fdb_latexmk\\|fls\\|idx\\|ilg\\|ind\\|lof\\|log\\|lot\\|nav\\|out\\|profiler.*\\.dat\\|ps\\|rej\\|run\\.xml\\|snm\\|spl\\|synctex\\.gz\\|toc\\|upa\\|upb\\|vrb\\|w18\\)\\|-blx\\.bib\\)\\'")
   (dired-guess-shell-alist-user
    `(("\\.\\(png\\|jpe?g\\|tiff\\)" ,(if (eq system-type 'darwin) "open" "xdg-open"))
      ("\\.\\(mp[34]\\|m4a\\|ogg\\|flac\\|webm\\|mkv\\)" "mpv")
@@ -1746,21 +1529,6 @@ away from the bottom.  Counts wrapped lines as real lines."
   (dired-hide-details-hide-absolute-location t)            ; EMACS-31
   (image-dired-dir (emacs-nxs--cache-path 'image-dired-dir))
   :init
-  (defun emacs-nxs/dired-setup ()
-    "Standardopsætning for almindelige Dired-buffere.
-
-Almindelig Dired vises detaljeret. Sidepanelet gøres kompakt
-separat i `emacs-nxs/window-dired-vc-root-left'."
-    (dired-omit-mode 1)
-    (dired-hide-details-mode -1)
-    ;; Aktivér ikoner udtrykkeligt i almindelige Dired-buffere.
-    ;; Sidepanelet gør det samme i sin egen buffer nedenfor.
-    (when (and (display-graphic-p)
-               (require 'nerd-icons-dired nil t))
-      (nerd-icons-dired-mode 1)))
-
-  (add-hook 'dired-mode-hook #'emacs-nxs/dired-setup)
-
   (defun emacs-nxs/dired-rsync-copy (dest)
     "Copy marked files in Dired to DEST using rsync in an async shell buffer."
     (interactive
@@ -1850,8 +1618,6 @@ ikke påvirker en almindelig Dired-buffer, der viser samme mappe."
         (dired-mode target-directory)
         (dired-readin)
         (dired-hide-details-mode 1)
-        (when (fboundp 'nerd-icons-dired-mode)
-          (nerd-icons-dired-mode 1))
         (font-lock-flush))
       (let ((window
              (display-buffer-in-side-window
@@ -1938,10 +1704,13 @@ Ex: mpv file1 file2 file3 file4..."
       (seq-uniq (append history-from-buffers history-from-file))))
 
   (defun emacs-nxs/eshell--save-merged-history ()
-    "Save all eshell buffer histories merged into `eshell-history-file-name`."
-    (let ((all-history (emacs-nxs/eshell--collect-all-history)))
-      (with-temp-file eshell-history-file-name
-    (insert (mapconcat #'identity all-history "\n")))))
+    "Save merged history only after Eshell has initialized its history file."
+    (when (and (boundp 'eshell-history-file-name)
+               (stringp eshell-history-file-name))
+      (let ((all-history (emacs-nxs/eshell--collect-all-history)))
+        (when all-history
+          (with-temp-file eshell-history-file-name
+            (insert (mapconcat #'identity all-history "\n")))))))
 
   (add-hook 'kill-emacs-hook #'emacs-nxs/eshell--save-merged-history)
 
@@ -2037,7 +1806,14 @@ Pre-fills the minibuffer with current Eshell input (from prompt to point)."
       (unless existing-buffer
     (kill-buffer buffer))
       nil))
-  (advice-add 'eshell/cat :override #'eshell/cat-with-syntax-highlighting)
+  (defun emacs-nxs/eshell-cat (original &rest args)
+    "Highlight one local regular file; preserve ordinary cat for other uses."
+    (if (and (= (length args) 1) (stringp (car args))
+             (not (string-prefix-p "-" (car args)))
+             (not (file-remote-p (car args))) (file-regular-p (car args)))
+        (eshell/cat-with-syntax-highlighting (car args))
+      (apply original args)))
+  (advice-add 'eshell/cat :around #'emacs-nxs/eshell-cat)
 
 
   ;; LOCAL ESHELL BINDINGS
@@ -2634,11 +2410,8 @@ The completion candidates include the Git status of each file."
     (define-key vc-dir-mode-map (kbd "S") #'emacs-nxs/vc-git-add)
     (define-key vc-dir-mode-map (kbd "U") #'emacs-nxs/vc-git-reset)
     (define-key vc-dir-mode-map (kbd "V") #'emacs-nxs/vc-git-visualize-status)
-    ;; Bind g to hide up to date files after refreshing in vc-dir
-
-    ;; NOTE: this won't be needed once EMACS-31 gets released: vc-dir-hide-up-to-date-on-revert does that
-    (define-key vc-dir-mode-map (kbd "g")
-        (lambda () (interactive) (vc-dir-refresh) (vc-dir-hide-up-to-date))))
+    ;; Emacs handles hiding unchanged files after the asynchronous refresh.
+    (define-key vc-dir-mode-map (kbd "g") #'vc-dir-refresh))
 
 
   ;; For C-x v ... bindings:
@@ -2704,20 +2477,22 @@ The completion candidates include the Git status of each file."
   :ensure nil
   :custom
   (eglot-autoshutdown t)
-  (eglot-events-buffer-size 0) ;; EMACS-31 -- do we still need it?
   (eglot-events-buffer-config '(:size 0 :format full))
-  (eglot-prefer-plaintext nil)
-  (jsonrpc-event-hook nil)
+  (eglot-documentation-renderer nil)
   (eglot-code-action-indications nil) ;; EMACS-31 -- annoying as hell
   :init
-  (fset #'jsonrpc--log-event #'ignore)
 
   (setq-default eglot-workspace-configuration (quote
                            (:gopls (:hints (:parameterNames t)))))
 
   (defun emacs-nxs/eglot-setup ()
     "Setup eglot mode with specific exclusions."
-    (unless (memq major-mode '(emacs-lisp-mode lisp-mode))
+    (when (and buffer-file-name (not (file-remote-p buffer-file-name))
+               (derived-mode-p 'python-mode 'python-ts-mode 'c-mode 'c-ts-mode
+                               'c++-mode 'c++-ts-mode 'ruby-mode 'ruby-ts-mode
+                               'js-mode 'js-ts-mode 'typescript-ts-base-mode
+                               'go-ts-mode 'go-mod-ts-mode 'rust-ts-mode
+                               'sh-mode 'bash-ts-mode 'css-mode 'css-ts-mode))
       (eglot-ensure)))
 
   (add-hook 'prog-mode-hook #'emacs-nxs/eglot-setup)
@@ -2760,8 +2535,8 @@ The completion candidates include the Git status of each file."
           ("C-c ! l" . flymake-show-buffer-diagnostics)
           ("C-c ! t" . toggle-flymake-diagnostics-at-eol))
   :custom
-  (flymake-show-diagnostics-at-end-of-line nil)
-  ;; (flymake-show-diagnostics-at-end-of-line 'short)
+  (flymake-inline-diagnostics nil)
+  ;; (flymake-inline-diagnostics 'short)
   (flymake-indicator-type 'margins)
   (flymake-margin-indicators-string
    `((error "!" compilation-error)      ;; Alternatives: », E, W, i, !, ?, ⚠️)
@@ -2773,12 +2548,12 @@ The completion candidates include the Git status of each file."
     "Toggle the display of Flymake diagnostics at the end of the line
 and restart Flymake to apply the changes."
     (interactive)
-    (setq flymake-show-diagnostics-at-end-of-line
-      (not flymake-show-diagnostics-at-end-of-line))
+    (setq-local flymake-inline-diagnostics
+                (unless flymake-inline-diagnostics 'eol))
     (flymake-mode -1) ;; Disable Flymake
     (flymake-mode 1)  ;; Re-enable Flymake
     (message "Flymake diagnostics at end of line: %s"
-         (if flymake-show-diagnostics-at-end-of-line
+         (if flymake-inline-diagnostics
          "Enabled" "Disabled"))))
 
 
@@ -2798,16 +2573,20 @@ and restart Flymake to apply the changes."
 (use-package whitespace
   :ensure nil
   :defer t
-  :hook (before-save-hook . whitespace-cleanup)
+  :hook (prog-mode-hook . emacs-nxs/enable-whitespace-cleanup)
   :init
+  (defun emacs-nxs/enable-whitespace-cleanup ()
+    "Clean whitespace only in programming buffers by default."
+    (add-hook 'before-save-hook #'whitespace-cleanup nil t))
+
   (defun emacs-nxs/toggle-whitespace-cleanup-on-save ()
     "Toggle whitespace-cleanup on save."
     (interactive)
     (if (memq #'whitespace-cleanup before-save-hook)
     (progn
-      (remove-hook 'before-save-hook #'whitespace-cleanup)
+      (remove-hook 'before-save-hook #'whitespace-cleanup t)
       (message "Whitespace cleanup on save turned OFF"))
-      (add-hook 'before-save-hook #'whitespace-cleanup)
+      (add-hook 'before-save-hook #'whitespace-cleanup nil t)
       (message "Whitespace cleanup on save turned ON")))
   (global-set-key (kbd "C-c t w") #'emacs-nxs/toggle-whitespace-cleanup-on-save))
 
@@ -3345,8 +3124,13 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
 (setq org-id-locations-file "~/.emacs.d/var/.org-id-locations") ;;NS inserted
 (setq org-directory "~/org/")
 (setq org-agenda-directory "~/org/agenda/")
-(setq org-agenda-files
-   (directory-files-recursively "~/org/agenda/" "\\.org$"))
+(defun emacs-nxs/refresh-agenda-files ()
+  "Refresh the recursive list of Org agenda files."
+  (interactive)
+  (setq org-agenda-files
+        (when (file-directory-p org-agenda-directory)
+          (directory-files-recursively org-agenda-directory "\\.org\\'"))))
+(emacs-nxs/refresh-agenda-files)
 
 (use-package org
   :ensure nil
@@ -3356,10 +3140,11 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   (:map org-mode-map
    ("M-m" . casual-org-tmenu))
   :custom
+  (org-preview-latex-default-process 'dvisvgm)
   (org-src-fontify-natively t)
   (org-fontify-quote-and-verse-blocks t)
   (org-src-tab-acts-natively t)
-  (org-edit-src-content-indentation 2)
+  (org-src-content-indentation 2)
   (org-hide-block-startup nil)
   (org-src-preserve-indentation nil)
   (org-return-follows-link t)
@@ -3491,8 +3276,8 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   ;; As seen in https://github.com/gregnewman/gmacs/blob/master/gmacs.org
   (setq org-todo-keywords
     (quote ((sequence "TODO(t)" "NEXT(n)" "GOING(g)" "UDSAT(e)" "VENT(w!)"
-                      "|" "DONE(d)" "PROJECTDONE(e)")
-            (sequence "WAITING(w@/!)" "UDSAT(s@/!)"
+                      "|" "DONE(d)" "PROJECTDONE(p)")
+            (sequence "WAITING(W@/!)"
                       "|" "CANCELLED(c@/!)"))))
   (setq org-todo-keyword-faces
     (quote (("TODO" :foreground "lime green" :weight bold)
@@ -3523,8 +3308,7 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
 ;;NS shame on me
 (use-package org-modern
   :ensure t
-  :hook (org-mode . org-modern-mode))
-(add-hook 'org-mode-hook #'org-modern-mode)
+  :hook (org-mode-hook . org-modern-mode))
 (add-hook 'org-agenda-finalize-hook #'org-modern-agenda)
 (setq org-modern-replace-stars '("◉" "⁑" "⁂" "❖" "✮" "✱" "✸")
       org-modern-star 'replace)
@@ -3666,11 +3450,10 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   :ensure auctex
   :defer t
   :mode ("\\.tex\\'" . LaTeX-mode)
+  :hook (LaTeX-mode-hook . TeX-source-correlate-mode)
   :config
   (require 'font-latex nil t)
   (require 'reftex nil t)
-  (add-hook 'latex-mode-hook #'turn-on-reftex)
-  (add-hook 'LaTeX-mode-hook #'turn-on-reftex)
   (setq-default TeX-engine 'luatex
                 TeX-master nil
                 TeX-command-extra-options "--shell-escape")
@@ -3685,17 +3468,10 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
         TeX-source-correlate-start-server t
         TeX-PDF-mode t
         TeX-auto-untabify t
-        org-latex-create-formula-image-program 'dvisvgm
         LaTeX-amsmath-label "eq:"
         TeX-error-overview-open-after-TeX-run t
         TeX-electric-math '("$" . "$")
-        TeX-electric-sub-and-superscript t
-        org-latex-remove-logfiles t
-        org-latex-logfiles-extensions
-        '("lof" "lot" "tex~" "blg" "aux" "idx" "out" "run.xml"
-          "toc" "nav" "synctex.gz" "w18" "snm" "vrb" "dvi"
-          "fdb_latexmk" "brf" "fls" "entoc" "ps" "spl"
-          "bbl" "dep" "upa" "upb" "profiler.*.dat")))
+        TeX-electric-sub-and-superscript t))
 
 (use-package reftex
   :ensure nil
@@ -3747,6 +3523,13 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
         pdf-view-use-imagemagick nil))
 
 (with-eval-after-load 'ox-latex
+  (setq
+        org-latex-remove-logfiles t
+        org-latex-logfiles-extensions
+        '("lof" "lot" "tex~" "blg" "aux" "idx" "out" "run.xml"
+          "toc" "nav" "synctex.gz" "w18" "snm" "vrb" "dvi"
+          "fdb_latexmk" "brf" "fls" "entoc" "ps" "spl"
+          "bbl" "dep" "upa" "upb" "profiler.*.dat"))
   ;; Ingen automatiske standardpakker fra Org-mode.
   ;; Ingen globale ekstra-pakker.
   ;; Ingen automatisk hyperref-konfiguration.
@@ -3848,7 +3631,6 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   (setq uniquify-buffer-name-style 'forward)
   (setq uniquify-strip-common-suffix t)
   (with-no-warnings
-    (setq uniquify-after-kill-buffer-p t)
     (setq uniquify-after-kill-buffer-flag t))) ;; EMACS-31 keep this one, delete the one above
 
 
@@ -3980,15 +3762,16 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
   :mode "\\.rb\\'"
   :mode "Rakefile\\'"
   :mode "Gemfile\\'"
-  :custom
+  :init
   (add-to-list 'treesit-language-source-alist '(ruby "https://github.com/tree-sitter/tree-sitter-ruby" "master" "src"))
+  :custom
   (ruby-indent-level 2)
   (ruby-indent-tabs-mode nil))
 
 
 ;;; │ JS-TS-MODE
 (use-package js-ts-mode
-  :ensure js ;; I care about js-base-mode but it is locked behind the feature "js"
+  :ensure nil ;; Built into the supported Emacs version.
   :mode "\\.jsx?\\'"
   :defer t
   :hook
@@ -4094,7 +3877,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 
 ;;; │ RUST-TS-MODE
 (use-package rust-ts-mode
-  :ensure rust-ts-mode
+  :ensure nil
   :mode "\\.rs\\'"
   :defer t
   :custom
@@ -4105,7 +3888,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 
 ;;; │ TOML-TS-MODE
 (use-package toml-ts-mode
-  :ensure toml-ts-mode
+  :ensure nil
   :mode "\\.toml\\'"
   :defer t
   :config
@@ -4122,7 +3905,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 
 ;;; │ YAML-TS-MODE
 (use-package yaml-ts-mode
-  :ensure yaml-ts-mode
+  :ensure nil
   :mode "\\.ya?ml\\'"
   :defer t
   :config
@@ -4131,7 +3914,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 
 ;;; │ DOCKERFILE-TS-MODE
 (use-package dockerfile-ts-mode
-  :ensure dockerfile-ts-mode
+  :ensure nil
   :mode "\\Dockerfile.*\\'"
   :defer t
   :config
@@ -4139,16 +3922,20 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 
 
 ;;; │ GO-TS-MODE
+(defun emacs-nxs/go-format-if-managed ()
+  "Format Go on save only when an Eglot server actually manages this buffer."
+  (when (eglot-managed-p) (eglot-format)))
+
 (defun emacs-nxs/go-common-setup ()
   "Common settings for Go tree-sitter modes."
-  (add-hook 'before-save-hook #'eglot-format nil t) ; buffer-local
+  (add-hook 'before-save-hook #'emacs-nxs/go-format-if-managed nil t) ; buffer-local
   (setq indent-tabs-mode t)                         ; Go likes tabs
   (setq tab-width 4)                                ; Tabs *display* as 4 spaces
   (when (derived-mode-p 'go-ts-mode)
     (setq-local go-ts-mode-indent-offset tab-width)))
 
 (use-package go-ts-mode
-  :ensure t
+  :ensure nil
   :mode ("\\.go\\'" . go-ts-mode)
   :mode ("go\\.mod\\'" . go-mod-ts-mode)
   :hook
@@ -4162,7 +3949,9 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 ;;  │ Each file is loaded here via `require'.
 ;;  │ See `lisp/*.el' for per-module documentation.
 (add-to-list 'load-path (expand-file-name "lisp/" user-emacs-directory))
-(add-to-list 'load-path (expand-file-name "perinf/" user-emacs-directory))
+(add-to-list 'load-path (expand-file-name "lisp/perinf/" user-emacs-directory))
+(setq perinf-interface-language 'da
+      perinf-interface-language-override 'da)
 (require 'perinf)
 (require 'emacs-nxs-themes)
 (require 'emacs-nxs-movements)
@@ -4266,7 +4055,8 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 ;; -----------------------------------------------------------------------------
 (use-package card-games
   :commands (card-games card-games-klondike card-games-bid card-games-hearts card-games-gin card-games-crapette))
-
-
+(use-package org-draw
+  :ensure t
+  :commands (org-draw org-draw-edit org-draw-setup))
 (provide 'init)
 ;;; init.el ends here

@@ -1,7 +1,8 @@
 ;;; perinf-storage.el --- Storage API boundary for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -27,11 +28,21 @@
 
 ;;; Code:
 
+(require 'perinf-i18n)
+
+(require 'subr-x)
+
 (require 'cl-lib)
 (require 'seq)
 (require 'org)
 (require 'org-id)
 (require 'perinf-project)
+(require 'perinf-date)
+
+(defun perinf-storage--org-mode ()
+  "Initialize internal Org parsing independently of user hooks and TODO words."
+  (let ((org-todo-keywords '((sequence "TODO" "|" "DONE"))))
+    (delay-mode-hooks (org-mode))))
 
 (define-error 'perinf-storage-error "Personal Work and Information System storage error")
 (define-error 'perinf-object-not-found "Personal Work and Information System object not found"
@@ -41,7 +52,7 @@
   id type title status properties sections file position checksum modified-p)
 
 (defun perinf-storage-read-project (directory)
-  "Return project metadata for the Personal Work and Information System project in DIRECTORY."
+  "Return project metadata for the PerInf project in DIRECTORY."
   (perinf-project-read-metadata directory))
 
 (defun perinf-storage--iso-now ()
@@ -54,7 +65,10 @@
 
 (defun perinf-storage--atomic-write-buffer (buffer file)
   "Atomically write BUFFER to FILE."
-  (let* ((directory (file-name-directory file))
+  (let ((visiting (find-buffer-visiting file)))
+    (when (and visiting (buffer-modified-p visiting))
+      (perinf-i18n-user-error "Save or revert unsaved changes before updating: %s" file)))
+  (let* ((directory (file-name-directory (expand-file-name file)))
          (temporary
           (make-temp-file (expand-file-name ".perinf-write-" directory))))
     (unwind-protect
@@ -62,6 +76,8 @@
           (with-current-buffer buffer
             (let ((coding-system-for-write 'utf-8-unix))
               (write-region (point-min) (point-max) temporary nil 'silent)))
+          (when (file-exists-p file)
+            (set-file-modes temporary (file-modes file)))
           (rename-file temporary file t)
           (setq temporary nil))
       (when (and temporary (file-exists-p temporary))
@@ -80,7 +96,7 @@
          (id (concat "task-" (org-id-uuid)))
          (now (perinf-storage--iso-now)))
     (when (string-empty-p title)
-      (user-error "Task title must not be empty"))
+      (perinf-i18n-user-error "Task title must not be empty"))
     (unless (file-readable-p file)
       (signal 'perinf-storage-error
               (list (format "Task storage is not readable: %s" file))))
@@ -138,8 +154,12 @@
          (day (string-to-number (substring date 8 10)))
          (hour (string-to-number (substring time 0 2)))
          (minute (string-to-number (substring time 3 5)))
-         (value (encode-time 0 minute hour day month year)))
-    (format-time-string "%Y-%m-%dT%H:%M:%S%:z" value)))
+         (second (string-to-number (substring time 6 8))))
+    (unless (and (perinf-date--valid-p year month day)
+                 (<= 0 hour 23) (<= 0 minute 59) (<= 0 second 59))
+      (perinf-i18n-user-error "Invalid date: %s" (concat date " " time)))
+    (format-time-string "%Y-%m-%dT%H:%M:%S%:z"
+                        (encode-time second minute hour day month year))))
 
 (defun perinf-storage--safe-file-name (value)
   "Return a conservative file-name component derived from VALUE."
@@ -174,9 +194,9 @@
                         (substring id (- (length id) 6)))
                 directory)))
     (when (string-empty-p title)
-      (user-error "Meeting title must not be empty"))
+      (perinf-i18n-user-error "Meeting title must not be empty"))
     (when (and finish-at (not (string< start-at finish-at)))
-      (user-error "Meeting finish time must be after start time"))
+      (perinf-i18n-user-error "Meeting finish time must be after start time"))
     (make-directory directory t)
     (with-temp-buffer
       (insert (format
@@ -223,7 +243,7 @@
          (id (concat "person-" (org-id-uuid)))
          (now (perinf-storage--iso-now)))
     (when (string-empty-p name)
-      (user-error "Person name must not be empty"))
+      (perinf-i18n-user-error "Person name must not be empty"))
     (unless (file-readable-p file)
       (signal 'perinf-storage-error
               (list (format "Person storage is not readable: %s" file))))
@@ -268,7 +288,7 @@
          (id (concat "person-group-" (org-id-uuid)))
          (now (perinf-storage--iso-now)))
     (when (string-empty-p name)
-      (user-error "Group name must not be empty"))
+      (perinf-i18n-user-error "Group name must not be empty"))
     (dolist (person-id member-ids)
       (unless (seq-find
                (lambda (person) (equal (perinf-object-id person) person-id))
@@ -304,11 +324,11 @@
          (id (concat "decision-" (org-id-uuid)))
          (now (perinf-storage--iso-now)))
     (when (string-empty-p title)
-      (user-error "Decision title must not be empty"))
+      (perinf-i18n-user-error "Decision title must not be empty"))
     (unless (and date
                  (string-match-p
                   "\\`[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\'" date))
-      (user-error "Decision date must be a normalized ISO date"))
+      (perinf-i18n-user-error "Decision date must be a normalized ISO date"))
     (unless (file-readable-p file)
       (signal 'perinf-storage-error
               (list (format "Decision storage is not readable: %s" file))))
@@ -350,7 +370,7 @@
          (id (concat "context-" (org-id-uuid)))
          (now (perinf-storage--iso-now)))
     (when (string-empty-p title)
-      (user-error "Context title must not be empty"))
+      (perinf-i18n-user-error "Context title must not be empty"))
     (unless (file-readable-p file)
       (signal 'perinf-storage-error
               (list (format "Context storage is not readable: %s" file))))
@@ -394,10 +414,27 @@
                  (list (format "Creation is not implemented for: %S"
                                type)))))))
 
-(defun perinf-storage-read (id)
-  "Read the object identified by ID.
-Object persistence is intentionally unavailable in the bootstrap milestone."
-  (signal 'perinf-object-not-found (list id)))
+(defun perinf-storage-read (id &optional project-directory)
+  "Read object ID from PROJECT-DIRECTORY or the current PerInf project."
+  (let ((project (or project-directory perinf-current-project)))
+    (unless project
+      (signal 'perinf-storage-error '("No project directory supplied")))
+    (or (catch 'found
+          (dolist (type '(task meeting person person-group decision context
+                         audio-recording document transcript minutes))
+            (let ((object (seq-find
+                           (lambda (item) (equal (perinf-object-id item) id))
+                           (perinf-storage-list type project))))
+              (when object (throw 'found object))))
+          (dolist (meeting (perinf-storage-list 'meeting project))
+            (dolist (section '(participants agenda))
+              (let ((object
+                     (seq-find
+                      (lambda (item) (equal (perinf-object-id item) id))
+                      (perinf-storage-list-children
+                       (perinf-object-id meeting) section project))))
+                (when object (throw 'found object))))))
+        (signal 'perinf-object-not-found (list id)))))
 
 (defun perinf-storage--find-id (id)
   "Move point to the Org entry with ID and return non-nil when found."
@@ -443,11 +480,12 @@ Object persistence is intentionally unavailable in the bootstrap milestone."
   "Add or remove a task activity resource.
 ID identifies the task, KIND is `file' or `buffer', and IDENTIFIER is its
 persistent name.  When ADD-P is non-nil, remove the same resource from other
-tasks first so automatic activity attribution remains unambiguous."
+tasks first so automatic activity attribution remains unambiguous.
+Use PROJECT-DIRECTORY as the project root."
   (unless (memq kind '(file buffer))
     (signal 'perinf-storage-error (list (format "Unsupported resource kind: %s" kind))))
   (unless (and (stringp identifier) (not (string-empty-p identifier)))
-    (user-error "Activity resource must not be empty"))
+    (perinf-i18n-user-error "Activity resource must not be empty"))
   (let* ((project (or project-directory
                       (signal 'perinf-storage-error
                               '("No project directory supplied"))))
@@ -461,7 +499,7 @@ tasks first so automatic activity attribution remains unambiguous."
               (list (format "Task storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (org-map-entries
        (lambda ()
          (when (equal (org-entry-get nil "PERINF_TYPE") "task")
@@ -492,7 +530,8 @@ tasks first so automatic activity attribution remains unambiguous."
 Return non-nil when the timestamp was stored.  A stopped timer is deliberately
 left unchanged because activity cannot then be counted as timed task work.
 The resource must still be associated with the task, preventing stale buffers
-from attributing work after a file has been reassigned to another task."
+from attributing work after a file has been reassigned to another task.
+Use PROJECT-DIRECTORY as the project root."
   (unless (memq kind '(file buffer))
     (signal 'perinf-storage-error (list (format "Unsupported resource kind: %s" kind))))
   (let* ((project (or project-directory
@@ -505,7 +544,7 @@ from attributing work after a file has been reassigned to another task."
               (list (format "Task storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id id)
         (signal 'perinf-object-not-found (list id)))
       (let* ((property (if (eq kind 'file)
@@ -533,7 +572,7 @@ from attributing work after a file has been reassigned to another task."
   "Stop the task timer at point at STOPPED-AT and return total seconds."
   (let ((started-at (org-entry-get nil "TASK_TIMER_STARTED_AT")))
     (unless started-at
-      (user-error "Task timer is not running"))
+      (perinf-i18n-user-error "Task timer is not running"))
     (let* ((finish (or stopped-at (current-time)))
            (elapsed (max 0 (truncate
                             (float-time
@@ -562,7 +601,7 @@ This implementation supports controlled task status changes."
               (list (format "Task storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id id)
         (signal 'perinf-object-not-found (list id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "task")
@@ -579,12 +618,15 @@ This implementation supports controlled task status changes."
                 ('cancelled '(open))
                 (_ nil))))
         (unless (memq new-status allowed)
-          (user-error "Invalid task status transition: %s to %s"
+          (perinf-i18n-user-error "Invalid task status transition: %s to %s"
                       current-status new-status))
         (when (org-entry-get nil "TASK_TIMER_STARTED_AT")
           (perinf-storage--stop-task-timer-at-point))
         (let ((org-log-done nil)
-              (org-log-into-drawer nil))
+              (org-log-into-drawer nil)
+              (org-inhibit-logging t)
+              (org-after-todo-state-change-hook nil)
+              (org-trigger-hook nil))
           (org-todo (if (eq new-status 'completed) "DONE" "TODO"))
           (if (eq new-status 'completed)
               (org-add-planning-info 'closed (current-time))
@@ -614,13 +656,13 @@ This implementation supports controlled task status changes."
               (list (format "Task storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id id)
         (signal 'perinf-object-not-found (list id)))
       (unless (equal (org-entry-get nil "PERINF_STATUS") "active")
-        (user-error "Task must be active before its timer can start"))
+        (perinf-i18n-user-error "Task must be active before its timer can start"))
       (when (org-entry-get nil "TASK_TIMER_STARTED_AT")
-        (user-error "Task timer is already running"))
+        (perinf-i18n-user-error "Task timer is already running"))
       (let ((now (perinf-storage--iso-now)))
         (org-entry-put nil "TASK_TIMER_STARTED_AT" now)
         (org-entry-put nil "TASK_LAST_ACTIVITY_AT" now)
@@ -644,7 +686,7 @@ elapsed interval up to that time; this supports an exact inactivity boundary."
               (list (format "Task storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id id)
         (signal 'perinf-object-not-found (list id)))
       (perinf-storage--stop-task-timer-at-point stopped-at)
@@ -665,7 +707,7 @@ running.  Use PROJECT-DIRECTORY for storage."
               (list (format "Task storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id id)
         (signal 'perinf-object-not-found (list id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "task")
@@ -712,17 +754,17 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
     (unless meeting
       (signal 'perinf-object-not-found (list meeting-id)))
     (when (string-empty-p title)
-      (user-error "Meeting title must not be empty"))
+      (perinf-i18n-user-error "Meeting title must not be empty"))
     (unless (and date start-time)
-      (user-error "Meeting date and start time must not be empty"))
+      (perinf-i18n-user-error "Meeting date and start time must not be empty"))
     (when (and finish-at (not (string< start-at finish-at)))
-      (user-error "Meeting finish time must be after start time"))
+      (perinf-i18n-user-error "Meeting finish time must be after start time"))
     (unless (file-readable-p file)
       (signal 'perinf-storage-error
               (list (format "Meeting storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id meeting-id)
         (signal 'perinf-object-not-found (list meeting-id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "meeting")
@@ -789,7 +831,7 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
               (list (format "Person storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id person-id)
         (signal 'perinf-object-not-found (list person-id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "person")
@@ -813,10 +855,10 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
          (safe-email (perinf-storage--safe-line email))
          (safe-phone (perinf-storage--safe-line phone)))
     (when (string-empty-p safe-name)
-      (user-error "Person name must not be empty"))
+      (perinf-i18n-user-error "Person name must not be empty"))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id person-id)
         (signal 'perinf-object-not-found (list person-id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "person")
@@ -847,7 +889,7 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
          (file (expand-file-name "data/people.org" project))
          (safe-name (perinf-storage--safe-line name)))
     (when (string-empty-p safe-name)
-      (user-error "Group name must not be empty"))
+      (perinf-i18n-user-error "Group name must not be empty"))
     (dolist (person-id member-ids)
       (unless (seq-find
                (lambda (person) (equal (perinf-object-id person) person-id))
@@ -855,7 +897,7 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
         (signal 'perinf-object-not-found (list person-id))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id group-id)
         (signal 'perinf-object-not-found (list group-id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "person-group")
@@ -878,7 +920,7 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
       (signal 'perinf-storage-error (list "Unsupported group status")))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id group-id)
         (signal 'perinf-object-not-found (list group-id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "person-group")
@@ -901,21 +943,20 @@ Signal an error when tasks or meetings still refer to the person."
          (meetings (plist-get references :meetings))
          (file (expand-file-name "data/people.org" project)))
     (when (or tasks meetings)
-      (user-error
-       "Person is still referenced by %d task(s) and %d meeting(s)"
+      (perinf-i18n-user-error "Person is still referenced by %d task(s) and %d meeting(s)"
        (length tasks) (length meetings)))
     (unless (file-readable-p file)
       (signal 'perinf-storage-error
               (list (format "Person storage is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id person-id)
         (signal 'perinf-object-not-found (list person-id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "person")
         (signal 'perinf-storage-error
                 (list (format "Object is not a person: %s" person-id))))
-      (org-cut-subtree)
+      (delete-region (point) (save-excursion (org-end-of-subtree t t)))
       (perinf-storage--atomic-write-buffer (current-buffer) file))
     t))
 
@@ -934,7 +975,7 @@ Signal an error when tasks or meetings still refer to the person."
                    (list (format "Task storage is not readable: %s" file))))
          (with-temp-buffer
            (insert-file-contents file)
-           (org-mode)
+           (perinf-storage--org-mode)
            (org-map-entries
             (lambda ()
               (when (equal (org-entry-get nil "PERINF_TYPE") "task")
@@ -983,7 +1024,7 @@ Signal an error when tasks or meetings still refer to the person."
                             (directory-files-recursively directory "\\.org\\'")))
            (with-temp-buffer
              (insert-file-contents file)
-             (org-mode)
+             (perinf-storage--org-mode)
              (goto-char (point-min))
              (org-map-entries
               (lambda ()
@@ -1033,7 +1074,7 @@ Signal an error when tasks or meetings still refer to the person."
                    (list (format "Person storage is not readable: %s" file))))
          (with-temp-buffer
            (insert-file-contents file)
-           (org-mode)
+           (perinf-storage--org-mode)
            (org-map-entries
             (lambda ()
               (when (equal (org-entry-get nil "PERINF_TYPE") "person")
@@ -1061,7 +1102,7 @@ Signal an error when tasks or meetings still refer to the person."
                    (list (format "Person storage is not readable: %s" file))))
          (with-temp-buffer
            (insert-file-contents file)
-           (org-mode)
+           (perinf-storage--org-mode)
            (org-map-entries
             (lambda ()
               (when (equal (org-entry-get nil "PERINF_TYPE") "person-group")
@@ -1085,7 +1126,7 @@ Signal an error when tasks or meetings still refer to the person."
                    (list (format "Decision storage is not readable: %s" file))))
          (with-temp-buffer
            (insert-file-contents file)
-           (org-mode)
+           (perinf-storage--org-mode)
            (org-map-entries
             (lambda ()
               (when (equal (org-entry-get nil "PERINF_TYPE") "decision")
@@ -1125,7 +1166,7 @@ Signal an error when tasks or meetings still refer to the person."
                    (list (format "Context storage is not readable: %s" file))))
          (with-temp-buffer
            (insert-file-contents file)
-           (org-mode)
+           (perinf-storage--org-mode)
            (org-map-entries
             (lambda ()
               (when (equal (org-entry-get nil "PERINF_TYPE") "context")
@@ -1159,7 +1200,7 @@ Signal an error when tasks or meetings still refer to the person."
          (when (file-readable-p file)
            (with-temp-buffer
              (insert-file-contents file)
-             (org-mode)
+             (perinf-storage--org-mode)
              (org-map-entries
               (lambda ()
                 (when (equal
@@ -1195,7 +1236,7 @@ Signal an error when tasks or meetings still refer to the person."
          (when (file-readable-p file)
            (with-temp-buffer
              (insert-file-contents file)
-             (org-mode)
+             (perinf-storage--org-mode)
              (org-map-entries
               (lambda ()
                 (when (equal (org-entry-get nil "PERINF_TYPE") "document")
@@ -1232,7 +1273,7 @@ Signal an error when tasks or meetings still refer to the person."
                        (directory-files-recursively directory "\\.org\\'")))
            (with-temp-buffer
              (insert-file-contents file)
-             (org-mode)
+             (perinf-storage--org-mode)
              (goto-char (point-min))
              (org-map-entries
               (lambda ()
@@ -1269,7 +1310,7 @@ Signal an error when tasks or meetings still refer to the person."
                        (directory-files-recursively directory "\\.org\\'")))
            (with-temp-buffer
              (insert-file-contents file)
-             (org-mode)
+             (perinf-storage--org-mode)
              (org-map-entries
               (lambda ()
                 (when (equal (org-entry-get nil "PERINF_TYPE") "minutes")
@@ -1318,7 +1359,8 @@ Signal an error when tasks or meetings still refer to the person."
     (secure-hash 'sha256 (current-buffer))))
 
 (defun perinf-storage--append-review-event (event actor timestamp &optional reason)
-  "Append review EVENT by ACTOR at TIMESTAMP to the current minutes entry."
+  "Append review EVENT by ACTOR at TIMESTAMP to the current minutes entry.
+Include REASON when supplied."
   (org-end-of-subtree t t)
   (unless (bolp) (insert "\n"))
   (insert "\n** Review event — " event "\n"
@@ -1333,7 +1375,8 @@ Signal an error when tasks or meetings still refer to the person."
 
 (defun perinf-storage-attach-audio
     (meeting-id source-file &optional project-directory)
-  "Copy SOURCE-FILE into the project and attach it to MEETING-ID."
+  "Copy SOURCE-FILE into the project and attach it to MEETING-ID.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1358,7 +1401,7 @@ Signal an error when tasks or meetings still refer to the person."
       (signal 'perinf-storage-error
               (list (format "Audio file is not readable: %s" source-file))))
     (when (alist-get 'AUDIO_ID (perinf-object-properties meeting))
-      (user-error "This meeting already has an audio recording"))
+      (perinf-i18n-user-error "This meeting already has an audio recording"))
     (make-directory (file-name-directory destination) t)
     (copy-file source-file destination nil)
     (let ((checksum (perinf-storage--file-sha256 destination))
@@ -1385,7 +1428,7 @@ Signal an error when tasks or meetings still refer to the person."
         (perinf-storage--atomic-write-buffer (current-buffer) index-file))
       (with-temp-buffer
         (insert-file-contents meeting-file)
-        (org-mode)
+        (perinf-storage--org-mode)
         (unless (perinf-storage--find-id meeting-id)
           (signal 'perinf-object-not-found (list meeting-id)))
         (org-entry-put nil "AUDIO_ID" audio-id)
@@ -1408,7 +1451,8 @@ Signal an error when tasks or meetings still refer to the person."
 
 (defun perinf-storage-attach-document
     (meeting-id agenda-item-id source-file &optional project-directory)
-  "Copy SOURCE-FILE into managed storage and attach it to a meeting or agenda item."
+  "Copy SOURCE-FILE into PROJECT-DIRECTORY and attach it to MEETING-ID.
+When AGENDA-ITEM-ID is non-nil, attach it to that meeting agenda item."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1484,7 +1528,8 @@ Signal an error when tasks or meetings still refer to the person."
 
 (defun perinf-storage-import-transcript
     (meeting-id source-file &optional project-directory)
-  "Import SOURCE-FILE as an immutable raw transcript for MEETING-ID."
+  "Import SOURCE-FILE as an immutable raw transcript for MEETING-ID.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1505,9 +1550,9 @@ Signal an error when tasks or meetings still refer to the person."
          (now (perinf-storage--iso-now))
          content source-checksum content-checksum)
     (unless audio-id
-      (user-error "Attach an audio recording before importing a transcript"))
+      (perinf-i18n-user-error "Attach an audio recording before importing a transcript"))
     (when (alist-get 'TRANSCRIPT_ID meeting-properties)
-      (user-error "This meeting already has a raw transcript"))
+      (perinf-i18n-user-error "This meeting already has a raw transcript"))
     (unless (file-readable-p source-file)
       (signal 'perinf-storage-error
               (list
@@ -1517,7 +1562,7 @@ Signal an error when tasks or meetings still refer to the person."
       (insert-file-contents source-file)
       (setq content (buffer-string)))
     (when (string-empty-p (string-trim content))
-      (user-error "The transcript file is empty"))
+      (perinf-i18n-user-error "The transcript file is empty"))
     (setq content-checksum
           (secure-hash 'sha256 (encode-coding-string content 'utf-8)))
     (make-directory directory t)
@@ -1547,7 +1592,7 @@ Signal an error when tasks or meetings still refer to the person."
       (perinf-storage--atomic-write-buffer (current-buffer) file))
     (with-temp-buffer
       (insert-file-contents meeting-file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id meeting-id)
         (signal 'perinf-object-not-found (list meeting-id)))
       (org-entry-put nil "TRANSCRIPT_ID" transcript-id)
@@ -1581,7 +1626,7 @@ Signal an error when tasks or meetings still refer to the person."
               (list (format "Transcript is not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (org-map-entries
        (lambda ()
          (when (and (not content)
@@ -1602,7 +1647,8 @@ Signal an error when tasks or meetings still refer to the person."
     (meeting-id source-file &optional project-directory)
   "Import SOURCE-FILE as generated draft minutes for MEETING-ID.
 Generation itself belongs behind the plugin boundary; the core records the
-result, its source transcript, checksums, and approval state."
+result, its source transcript, checksums, and approval state.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1626,9 +1672,9 @@ result, its source transcript, checksums, and approval state."
          (now (perinf-storage--iso-now))
          content content-checksum)
     (unless transcript
-      (user-error "Import a raw transcript before importing generated minutes"))
+      (perinf-i18n-user-error "Import a raw transcript before importing generated minutes"))
     (when (alist-get 'MINUTES_ID meeting-properties)
-      (user-error "This meeting already has minutes"))
+      (perinf-i18n-user-error "This meeting already has minutes"))
     (unless (file-readable-p source-file)
       (signal 'perinf-storage-error
               (list (format "Minutes file is not readable: %s" source-file))))
@@ -1636,7 +1682,7 @@ result, its source transcript, checksums, and approval state."
       (insert-file-contents source-file)
       (setq content (buffer-string)))
     (when (string-empty-p (string-trim content))
-      (user-error "The minutes file is empty"))
+      (perinf-i18n-user-error "The minutes file is empty"))
     (setq content-checksum
           (secure-hash 'sha256 (encode-coding-string content 'utf-8)))
     (make-directory directory t)
@@ -1667,7 +1713,7 @@ result, its source transcript, checksums, and approval state."
       (perinf-storage--atomic-write-buffer (current-buffer) file))
     (with-temp-buffer
       (insert-file-contents meeting-file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id meeting-id)
         (signal 'perinf-object-not-found (list meeting-id)))
       (org-entry-put nil "MINUTES_ID" minutes-id)
@@ -1680,7 +1726,8 @@ result, its source transcript, checksums, and approval state."
 
 (defun perinf-storage-approve-minutes
     (minutes-id approved-by &optional project-directory)
-  "Record human approval of MINUTES-ID by APPROVED-BY."
+  "Record human approval of MINUTES-ID by APPROVED-BY.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1706,17 +1753,15 @@ result, its source transcript, checksums, and approval state."
     (unless minutes
       (signal 'perinf-object-not-found (list minutes-id)))
     (unless (eq (perinf-object-status minutes) 'awaiting-final-approval)
-      (user-error
-       "Minutes must be submitted for final approval before approval"))
+      (perinf-i18n-user-error "Minutes must be submitted for final approval before approval"))
     (when (string-empty-p approver)
-      (user-error "The approver name must not be empty"))
+      (perinf-i18n-user-error "The approver name must not be empty"))
     (unless (and submitted-checksum
                  (equal submitted-checksum current-checksum))
-      (user-error
-       "Minutes changed after submission; reject and resubmit them"))
+      (perinf-i18n-user-error "Minutes changed after submission; reject and resubmit them"))
     (with-temp-buffer
       (insert-file-contents (perinf-object-file minutes))
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id minutes-id)
         (signal 'perinf-object-not-found (list minutes-id)))
       (org-entry-put nil "PERINF_STATUS" "final-approved")
@@ -1733,7 +1778,7 @@ result, its source transcript, checksums, and approval state."
            (meeting (perinf-storage--meeting-by-id meeting-id project)))
       (with-temp-buffer
         (insert-file-contents (perinf-object-file meeting))
-        (org-mode)
+        (perinf-storage--org-mode)
         (unless (perinf-storage--find-id meeting-id)
           (signal 'perinf-object-not-found (list meeting-id)))
         (org-entry-put nil "MINUTES_STATUS" "final-approved")
@@ -1747,7 +1792,8 @@ result, its source transcript, checksums, and approval state."
 (defun perinf-storage-submit-minutes
     (minutes-id submitted-by &optional project-directory)
   "Submit reviewed MINUTES-ID for final approval by SUBMITTED-BY.
-The current minutes content is checksummed at submission time."
+The current minutes content is checksummed at submission time.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1764,9 +1810,9 @@ The current minutes content is checksummed at submission time."
       (signal 'perinf-object-not-found (list minutes-id)))
     (unless (memq (perinf-object-status minutes)
                   '(ai-draft manual-draft under-review rejected))
-      (user-error "Minutes cannot be submitted from their current status"))
+      (perinf-i18n-user-error "Minutes cannot be submitted from their current status"))
     (when (string-empty-p submitter)
-      (user-error "The submitter name must not be empty"))
+      (perinf-i18n-user-error "The submitter name must not be empty"))
     (let ((checksum
            (secure-hash
             'sha256
@@ -1774,7 +1820,7 @@ The current minutes content is checksummed at submission time."
              (perinf-storage-minutes-content minutes) 'utf-8))))
       (with-temp-buffer
         (insert-file-contents (perinf-object-file minutes))
-        (org-mode)
+        (perinf-storage--org-mode)
         (unless (perinf-storage--find-id minutes-id)
           (signal 'perinf-object-not-found (list minutes-id)))
         (org-entry-put nil "PERINF_STATUS" "awaiting-final-approval")
@@ -1790,7 +1836,7 @@ The current minutes content is checksummed at submission time."
            (meeting (perinf-storage--meeting-by-id meeting-id project)))
       (with-temp-buffer
         (insert-file-contents (perinf-object-file meeting))
-        (org-mode)
+        (perinf-storage--org-mode)
         (unless (perinf-storage--find-id meeting-id)
           (signal 'perinf-object-not-found (list meeting-id)))
         (org-entry-put nil "MINUTES_STATUS" "awaiting-final-approval")
@@ -1803,7 +1849,8 @@ The current minutes content is checksummed at submission time."
 
 (defun perinf-storage-reject-minutes
     (minutes-id rejected-by reason &optional project-directory)
-  "Reject submitted MINUTES-ID by REJECTED-BY with REASON."
+  "Reject submitted MINUTES-ID by REJECTED-BY with REASON.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1822,12 +1869,12 @@ The current minutes content is checksummed at submission time."
       (user-error
        "Only minutes awaiting final approval can be rejected"))
     (when (string-empty-p reviewer)
-      (user-error "The reviewer name must not be empty"))
+      (perinf-i18n-user-error "The reviewer name must not be empty"))
     (when (string-empty-p explanation)
-      (user-error "A rejection reason is required"))
+      (perinf-i18n-user-error "A rejection reason is required"))
     (with-temp-buffer
       (insert-file-contents (perinf-object-file minutes))
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id minutes-id)
         (signal 'perinf-object-not-found (list minutes-id)))
       (org-entry-put nil "PERINF_STATUS" "rejected")
@@ -1844,7 +1891,7 @@ The current minutes content is checksummed at submission time."
            (meeting (perinf-storage--meeting-by-id meeting-id project)))
       (with-temp-buffer
         (insert-file-contents (perinf-object-file meeting))
-        (org-mode)
+        (perinf-storage--org-mode)
         (unless (perinf-storage--find-id meeting-id)
           (signal 'perinf-object-not-found (list meeting-id)))
         (org-entry-put nil "MINUTES_STATUS" "rejected")
@@ -1863,7 +1910,7 @@ The current minutes content is checksummed at submission time."
         content)
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (org-map-entries
        (lambda ()
          (when (and (not content)
@@ -1888,7 +1935,7 @@ The current minutes content is checksummed at submission time."
               (list (format "Minutes are not readable: %s" file))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (org-map-entries
        (lambda ()
          (when (equal (org-entry-get nil "PERINF_SECTION") "review-event")
@@ -1910,7 +1957,8 @@ The current minutes content is checksummed at submission time."
 
 (defun perinf-storage-set-meeting-status
     (meeting-id new-status &optional project-directory)
-  "Set MEETING-ID to NEW-STATUS using the controlled meeting workflow."
+  "Set MEETING-ID to NEW-STATUS using the controlled meeting workflow.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -1925,11 +1973,11 @@ The current minutes content is checksummed at submission time."
             (_ nil)))
          (now (perinf-storage--iso-now)))
     (unless (memq new-status allowed)
-      (user-error "Invalid meeting status transition: %s to %s"
+      (perinf-i18n-user-error "Invalid meeting status transition: %s to %s"
                   current-status new-status))
     (with-temp-buffer
       (insert-file-contents (perinf-object-file meeting))
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id meeting-id)
         (signal 'perinf-object-not-found (list meeting-id)))
       (org-entry-put nil "PERINF_STATUS" (symbol-name new-status))
@@ -1973,7 +2021,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
     (unless task
       (signal 'perinf-object-not-found (list task-id)))
     (unless ids
-      (user-error "At least one person must be assigned"))
+      (perinf-i18n-user-error "At least one person must be assigned"))
     (dolist (person-id ids)
       (unless (seq-find
                (lambda (candidate)
@@ -1982,7 +2030,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
         (signal 'perinf-object-not-found (list person-id))))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id task-id)
         (signal 'perinf-object-not-found (list task-id)))
       (org-entry-put nil "ASSIGNEE_IDS" (perinf-storage--join-ids ids))
@@ -2020,7 +2068,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
       (signal 'perinf-object-not-found (list context-id)))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id task-id)
         (signal 'perinf-object-not-found (list task-id)))
       (org-entry-put nil "CONTEXT_ID" context-id)
@@ -2033,9 +2081,10 @@ PERSON-IDS may be one stable ID or a list of IDs."
 
 (defun perinf-storage-set-attendance
     (meeting-id participant-id attendance &optional project-directory)
-  "Set PARTICIPANT-ID attendance in MEETING-ID to ATTENDANCE."
+  "Set PARTICIPANT-ID attendance in MEETING-ID to ATTENDANCE.
+Use PROJECT-DIRECTORY as the project root."
   (unless (memq attendance '(invited attended absent excused))
-    (user-error "Unsupported attendance status: %s" attendance))
+    (perinf-i18n-user-error "Unsupported attendance status: %s" attendance))
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -2044,7 +2093,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
          (file (perinf-object-file meeting)))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (unless (perinf-storage--find-id participant-id)
         (signal 'perinf-object-not-found (list participant-id)))
       (unless (equal (org-entry-get nil "PERINF_TYPE") "participant")
@@ -2063,7 +2112,8 @@ PERSON-IDS may be one stable ID or a list of IDs."
 
 (defun perinf-storage--add-participant
     (parent-id data project-directory)
-  "Add participant DATA below meeting PARENT-ID."
+  "Add participant DATA below meeting PARENT-ID.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -2084,7 +2134,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
       (signal 'perinf-object-not-found (list person-id)))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (let (section-position duplicate)
         (org-map-entries
          (lambda ()
@@ -2094,7 +2144,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
                       (equal (org-entry-get nil "PERSON_ID") person-id))
              (setq duplicate t))))
         (when duplicate
-          (user-error "This person is already a participant"))
+          (perinf-i18n-user-error "This person is already a participant"))
         (unless section-position
           (signal 'perinf-storage-error
                   (list "Meeting has no participants section")))
@@ -2114,7 +2164,8 @@ PERSON-IDS may be one stable ID or a list of IDs."
 
 (defun perinf-storage--list-participants
     (parent-id project-directory)
-  "List participant children below meeting PARENT-ID."
+  "List participant children below meeting PARENT-ID.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -2124,7 +2175,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
          children)
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (org-map-entries
        (lambda ()
          (when (equal (org-entry-get nil "PERINF_TYPE") "participant")
@@ -2147,7 +2198,8 @@ PERSON-IDS may be one stable ID or a list of IDs."
 
 (defun perinf-storage--add-agenda-item
     (parent-id data project-directory)
-  "Add agenda item DATA below meeting PARENT-ID."
+  "Add agenda item DATA below meeting PARENT-ID.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -2160,10 +2212,10 @@ PERSON-IDS may be one stable ID or a list of IDs."
          (kind (or (alist-get 'AGENDA_KIND data) 'discussion))
          (item-id (concat "agenda-item-" (org-id-uuid))))
     (when (or (string-empty-p title) (string-empty-p number))
-      (user-error "Agenda number and title are required"))
+      (perinf-i18n-user-error "Agenda number and title are required"))
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (let (section-position duplicate)
         (org-map-entries
          (lambda ()
@@ -2173,7 +2225,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
                       (equal (org-entry-get nil "AGENDA_NUMBER") number))
              (setq duplicate t))))
         (when duplicate
-          (user-error "This agenda number already exists"))
+          (perinf-i18n-user-error "This agenda number already exists"))
         (unless section-position
           (signal 'perinf-storage-error
                   (list "Meeting has no agenda section")))
@@ -2192,7 +2244,8 @@ PERSON-IDS may be one stable ID or a list of IDs."
 
 (defun perinf-storage--list-agenda-items
     (parent-id project-directory)
-  "List agenda item children below meeting PARENT-ID."
+  "List agenda item children below meeting PARENT-ID.
+Use PROJECT-DIRECTORY as the project root."
   (let* ((project
           (or project-directory
               (signal 'perinf-storage-error
@@ -2202,7 +2255,7 @@ PERSON-IDS may be one stable ID or a list of IDs."
          children)
     (with-temp-buffer
       (insert-file-contents file)
-      (org-mode)
+      (perinf-storage--org-mode)
       (org-map-entries
        (lambda ()
          (when (equal (org-entry-get nil "PERINF_TYPE") "agenda-item")
@@ -2228,7 +2281,8 @@ PERSON-IDS may be one stable ID or a list of IDs."
 
 (defun perinf-storage-add-child
     (parent-id section child-type data &optional project-directory)
-  "Add CHILD-TYPE from DATA below SECTION of PARENT-ID."
+  "Add CHILD-TYPE from DATA below SECTION of PARENT-ID.
+Use PROJECT-DIRECTORY as the project root."
   (pcase (list section child-type)
     (`(participants participant)
      (perinf-storage--add-participant parent-id data project-directory))
@@ -2239,7 +2293,8 @@ PERSON-IDS may be one stable ID or a list of IDs."
 
 (defun perinf-storage-list-children
     (parent-id section &optional project-directory)
-  "List child objects below SECTION of PARENT-ID."
+  "List child objects below SECTION of PARENT-ID.
+Use PROJECT-DIRECTORY as the project root."
   (pcase section
     ('participants
      (perinf-storage--list-participants parent-id project-directory))

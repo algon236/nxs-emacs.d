@@ -25,7 +25,6 @@
   (modus-themes-italic-constructs t)
   (modus-themes-bold-constructs t)
   (modus-themes-mixed-fonts nil)
-  (modus-themes-prompts '(bold intense))
   (modus-themes-common-palette-overrides
    `((accent-0 "#89b4fa")
      (accent-1 "#89dceb")
@@ -150,7 +149,6 @@
   (modus-themes-italic-constructs t)
   (modus-themes-bold-constructs t)
   (modus-themes-mixed-fonts nil)
-  (modus-themes-prompts '(bold intense))
   (modus-themes-common-palette-overrides
    `((accent-0 "#a1bfff")
      (accent-1 "#79a8ff")
@@ -273,7 +271,6 @@
   (modus-themes-italic-constructs t)
   (modus-themes-bold-constructs t)
   (modus-themes-mixed-fonts nil)
-  (modus-themes-prompts '(bold intense))
   (modus-themes-common-palette-overrides
    `((accent-0 "#00e5ff")           ; neon cyan
      (accent-1 "#ff0044")           ; hot pink
@@ -396,7 +393,6 @@
   (modus-themes-italic-constructs t)
   (modus-themes-bold-constructs t)
   (modus-themes-mixed-fonts nil)
-  (modus-themes-prompts '(bold intense))
 
   ;; MATRIX COLOR SCHEME OVERRIDES
   (modus-themes-common-palette-overrides

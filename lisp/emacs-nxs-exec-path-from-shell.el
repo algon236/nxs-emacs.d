@@ -1,51 +1,40 @@
-;;; emacs-nxs-exec-path-from-shell.el --- Sync shell PATH into Emacs  -*- lexical-binding: t; -*-
-;;
-;; Author: Rahul Martim Juliato
-;; URL: https://github.com/LionyxML/emacs-solo
-;; Package-Requires: ((emacs "30.1"))
-;; Keywords: terminals, convenience
+;;; emacs-nxs-exec-path-from-shell.el --- Preserve shell and Emacs paths -*- lexical-binding: t; -*-
 ;; SPDX-License-Identifier: GPL-3.0-or-later
-
-;;; Commentary:
-;;
-;; Loads the user's default shell PATH settings into Emacs.
-;; Useful when launching Emacs directly from GUI systems.
-;; Supports bash, zsh, and fish shells.
-
 ;;; Code:
+(require 'subr-x)
+(require 'cl-lib)
 
-(use-package emacs-nxs-exec-path-from-shell
-  :ensure nil
-  :no-require t
-  :defer t
-  :init
-  (defun emacs-nxs/set-exec-path-from-shell-PATH ()
-    "Set up Emacs' `exec-path' and PATH environment the same as the user's shell.
-This works with bash, zsh, or fish)."
-    (interactive)
-    (let* ((shell (getenv "SHELL"))
-           (shell-name (file-name-nondirectory shell))
-           (command
-            (cond
-             ((string= shell-name "fish")
-              "fish -c 'string join : $PATH'")
-             ((string= shell-name "zsh")
-              "zsh -i -c 'printenv PATH'")
-             ((string= shell-name "bash")
-              "bash --login -c 'echo $PATH'")
-             (t nil))))
-      (if (not command)
-          (message "emacs-nxs: Unsupported shell: %s" shell-name)
-        (let ((path-from-shell
-               (replace-regexp-in-string
-                "[ \t\n]*$" ""
-                (shell-command-to-string command))))
-          (when (and path-from-shell (not (string= path-from-shell "")))
-            (setenv "PATH" path-from-shell)
-            (setq exec-path (split-string path-from-shell path-separator))
-            (message ">>> emacs-nxs: PATH loaded from %s" shell-name))))))
+(defun emacs-nxs/set-exec-path-from-shell-PATH ()
+  "Import the shell PATH without losing early-init paths or exec-directory.
+Ignore startup chatter and leave the environment intact on shell failure."
+  (interactive)
+  (let* ((shell (or (getenv "SHELL") shell-file-name))
+         (name (file-name-nondirectory shell))
+         (marker "__NXS_PATH__=")
+         (args (cond ((equal name "zsh")
+                      '("-i" "-c" "printf '__NXS_PATH__=%s\\n' \"$PATH\""))
+                     ((equal name "bash")
+                      '("--login" "-c" "printf '__NXS_PATH__=%s\\n' \"$PATH\""))
+                     ((equal name "fish")
+                      '("-c" "printf '__NXS_PATH__=%s\\n' (string join : $PATH)")))))
+    (when args
+      (condition-case err
+          (with-temp-buffer
+            (let ((status (apply #'call-process shell nil (list t nil) nil args)))
+              (goto-char (point-min))
+              (if (and (equal status 0)
+                       (re-search-forward (concat "^" marker "\\([^\n\r]+\\)") nil t))
+                  (let* ((shell-path (split-string (match-string 1) path-separator t))
+                         (paths (delete-dups
+                                 (append (cl-remove-if-not
+                                          #'file-directory-p emacs-nxs-extra-exec-path)
+                                         shell-path exec-path (list exec-directory)))))
+                    (setq exec-path paths)
+                    (setenv "PATH" (mapconcat #'identity (delq nil (copy-sequence paths))
+                                             path-separator)))
+                (message "NXS: shell PATH import failed; existing paths retained"))))
+        (error (message "NXS: PATH retained: %s" (error-message-string err)))))))
 
-  (add-hook 'after-init-hook #'emacs-nxs/set-exec-path-from-shell-PATH))
-
+(add-hook 'after-init-hook #'emacs-nxs/set-exec-path-from-shell-PATH)
 (provide 'emacs-nxs-exec-path-from-shell)
 ;;; emacs-nxs-exec-path-from-shell.el ends here

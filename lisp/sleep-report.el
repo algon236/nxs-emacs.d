@@ -37,6 +37,23 @@
 (defun emacs-nxs-sleep-report--trim-row (row)
   (mapcar (lambda (cell) (string-trim (format "%s" cell))) row))
 
+(defun emacs-nxs-sleep-report--table-header-and-data ()
+  "Returnér tabelhoved og datarækker ved punkt.
+Indledende skillelinjer ignoreres.  En skillelinje efter tabelhovedet
+markerer begyndelsen på data, og den næste markerer slutningen.  Dermed
+medtages en eventuel efterfølgende gennemsnitsrække ikke som data."
+  (let ((table (org-table-to-lisp)))
+    (while (eq (car table) 'hline)
+      (setq table (cdr table)))
+    (let ((header (car table)))
+      (setq table (cdr table))
+      (while (eq (car table) 'hline)
+        (setq table (cdr table)))
+      (list header
+            (cl-loop for row in table
+                     until (eq row 'hline)
+                     collect row)))))
+
 (defun emacs-nxs-sleep-report--find-table ()
   "Returnér (NAVN OVERSKRIFT RÆKKER) for den første passende Org-tabel."
   (save-excursion
@@ -49,17 +66,17 @@
           (while (and (not (eobp)) (looking-at-p "^[ \t]*$"))
             (forward-line 1))
           (when (looking-at-p "^[ \t]*|")
-            (let* ((table (org-table-to-lisp))
-                   (rows (cl-remove-if (lambda (row) (eq row 'hline)) table))
-                   (header (emacs-nxs-sleep-report--trim-row (car rows)))
-                   (normalized (mapcar #'downcase header)))
+            (pcase-let* ((`(,raw-header ,raw-rows)
+                          (emacs-nxs-sleep-report--table-header-and-data))
+                         (header (emacs-nxs-sleep-report--trim-row raw-header))
+                         (normalized (mapcar #'downcase header)))
               (when (and (member "dato" normalized)
                          (cl-some (lambda (s) (string-match-p "puls" s)) normalized)
                          (cl-some (lambda (s) (string-match-p "soevn\\|søvn" s)) normalized))
                 (setq resultat
                       (list name header
                             (mapcar #'emacs-nxs-sleep-report--trim-row
-                                    (cdr rows)))))))))
+                                    raw-rows))))))))
       (or resultat
           (user-error "Ingen navngivet søvntabel fundet i %s" (buffer-name))))))
 
@@ -77,9 +94,10 @@
       (forward-line 1))
     (unless (looking-at-p "^[ \t]*|")
       (user-error "Der står ingen Org-tabel efter navnet '%s'" name))
-    (mapcar #'emacs-nxs-sleep-report--trim-row
-            (cl-remove-if (lambda (row) (eq row 'hline))
-                          (org-table-to-lisp)))))
+    (pcase-let ((`(,header ,rows)
+                 (emacs-nxs-sleep-report--table-header-and-data)))
+      (mapcar #'emacs-nxs-sleep-report--trim-row
+              (cons header rows)))))
 
 (defun emacs-nxs-sleep-report--period (name)
   "Udled perioden fra tabelnavnet NAME, for eksempel juli-2026."
@@ -274,7 +292,9 @@ morgen, middag og aften."
      (format "\\addplot+[color=%s, mark=*, mark options={fill=%s!40}] table[x=dato,y=%s] {\n"
              color color header)
      (format "  dato  %s\n%s\n};\n" header data)
-     (when (and regression (> (length valid) 1))
+     (when (and regression
+                (> (length valid) 1)
+                (not (apply #'= (mapcar #'cdr valid))))
        (concat
         (format "\\addplot+[color=%s, dashed, no marks] table[y={create col/linear regression={y=%s}}] {\n"
                 color header)

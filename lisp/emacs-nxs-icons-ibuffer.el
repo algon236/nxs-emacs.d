@@ -13,6 +13,8 @@
 
 ;;; Code:
 
+(require 'emacs-nxs-icons)
+
 (use-package emacs-nxs-icons-ibuffer
   :if (memq 'ibuffer emacs-nxs-icon-modules)
   :ensure nil

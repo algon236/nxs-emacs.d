@@ -2,7 +2,7 @@
 ;;
 ;; Author: Rahul Martim Juliato
 ;; URL: https://github.com/LionyxML/emacs-solo
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "32.0.50"))
 ;; Keywords: config
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -31,8 +31,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;  You need a modern emacs
-(when (version< emacs-version "30")
-  (error "nec-emacs requires Emacs 30 or later"))
+(when (version< emacs-version "32.0.50")
+  (error "NXS requires Emacs 32.0.50 or later (configuration tested on 32.0.50)"))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Make GUI-started Emacs on macOS see the same important command-line tools
 ;; as a normal shell.  This is deliberately done in early-init.el so init.el can

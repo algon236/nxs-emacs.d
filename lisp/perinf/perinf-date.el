@@ -1,7 +1,8 @@
 ;;; perinf-date.el --- Date normalization for Personal Work and Information System -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026, Niels Søndergaard, Nivaa, Denmark.
-;; Author: Niels Søndergaard, mail: niels<at>algon.dk
+;; Author: Niels Søndergaard <niels@algon.dk>
+;; Assisted-by: Codex:GPT-6
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;;
@@ -20,7 +21,15 @@
 ;; You should have received a copy of the GNU General Public License along with
 ;; this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;;; Commentary:
+
+;; Date normalization for Personal Work and Information System.
+
 ;;; Code:
+
+(require 'perinf-i18n)
+
+(require 'subr-x)
 
 (defun perinf-date--valid-p (year month day)
   "Return non-nil when YEAR, MONTH, and DAY form a real date."
@@ -35,24 +44,24 @@
 (defun perinf-date-normalize (text format)
   "Normalize date TEXT using FORMAT and return YYYY-MM-DD.
 An empty TEXT returns nil.  Numeric dates are interpreted only according to
-the explicitly selected FORMAT."
+the explicitly selected FORMAT.  For `localized-long', enter an ISO date."
   (let ((value (string-trim text))
         year month day)
     (unless (string-empty-p value)
       (let ((regexp
              (pcase format
-               ('iso
+               ((or 'iso 'localized-long)
                 "\\`\\([0-9]\\{4\\}\\)-\\([0-9]\\{1,2\\}\\)-\\([0-9]\\{1,2\\}\\)\\'")
                ('day-month-year-dash
                 "\\`\\([0-9]\\{1,2\\}\\)-\\([0-9]\\{1,2\\}\\)-\\([0-9]\\{4\\}\\)\\'")
                ((or 'day-month-year-slash 'month-day-year-slash)
                 "\\`\\([0-9]\\{1,2\\}\\)/\\([0-9]\\{1,2\\}\\)/\\([0-9]\\{4\\}\\)\\'")
-               (_ (user-error "Date input is not implemented for: %S"
+               (_ (perinf-i18n-user-error "Date input is not implemented for: %S"
                               format)))))
         (unless (string-match regexp value)
-          (user-error "Date does not match the selected format"))
+          (perinf-i18n-user-error "Date does not match the selected format"))
         (pcase format
-          ('iso
+          ((or 'iso 'localized-long)
            (setq year (string-to-number (match-string 1 value))
                  month (string-to-number (match-string 2 value))
                  day (string-to-number (match-string 3 value))))
@@ -65,7 +74,7 @@ the explicitly selected FORMAT."
                  day (string-to-number (match-string 2 value))
                  year (string-to-number (match-string 3 value))))))
       (unless (perinf-date--valid-p year month day)
-        (user-error "Invalid date: %s" value))
+        (perinf-i18n-user-error "Invalid date: %s" value))
       (format "%04d-%02d-%02d" year month day))))
 
 (defun perinf-date-format (iso-date format)

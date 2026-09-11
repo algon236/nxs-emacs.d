@@ -38,7 +38,7 @@
                     ((string-match-p "\\?\\?" code) git-status-untracked)
                     ((string-match-p "^ M" code) git-status-modified)
                     ((string-match-p "^M " code) git-status-modified-alt)
-                    ((string-match-p "^D" code) git-status-deleted)
+                    ((string-match-p "D" code) git-status-deleted)
                     ((string-match-p "^A" code) git-status-added)
                     ((string-match-p "^R" code) git-status-renamed)
                     ((string-match-p "^C" code) git-status-copied)
@@ -58,23 +58,26 @@
     "Overlay Git status indicators on the first column in Dired."
     (interactive)
     (require 'vc-git)
-    (let ((git-root (ignore-errors (vc-git-root default-directory))))
+    (let ((git-root (and (not (file-remote-p default-directory))
+                         (ignore-errors (vc-git-root default-directory)))))
       (when (and git-root
                  (not (file-remote-p default-directory))
                  emacs-nxs-dired-gutter-enabled)
         (setq git-root (expand-file-name git-root))
-        (let* ((git-status (vc-git--run-command-string nil "status" "--porcelain" "--ignored" "--untracked-files=normal"))
+        (let* ((git-status (vc-git--run-command-string nil "status" "--porcelain=v1" "-z" "--ignored" "--untracked-files=normal"))
                (status-map (make-hash-table :test 'equal)))
           (mapc #'delete-overlay emacs-nxs/dired-git-status-overlays)
           (setq emacs-nxs/dired-git-status-overlays nil)
 
-          (dolist (line (split-string git-status "\n" t))
-            (when (string-match "^\\(..\\) \\(.+\\)$" line)
-              (let* ((code (match-string 1 line))
-                     (file (match-string 2 line))
-                     (fullpath (expand-file-name file git-root))
-                     (status-face (emacs-nxs/dired--git-status-face code)))
-                (puthash fullpath status-face status-map))))
+          (let ((records (split-string git-status "\0" t)))
+            (while records
+              (let* ((record (pop records))
+                     (code (substring record 0 2))
+                     (file (substring record 3)))
+                ;; In porcelain -z, a rename's destination precedes the source.
+                (when (string-match-p "[RC]" code) (pop records))
+                (puthash (expand-file-name file git-root)
+                         (emacs-nxs/dired--git-status-face code) status-map))))
 
           (save-excursion
             (goto-char (point-min))

@@ -20,7 +20,7 @@
   :type 'boolean
   :group 'emacs-nxs-dired)
 
-(defcustom emacs-nxs-dired-hide-details t
+(defcustom emacs-nxs-dired-hide-details nil
   "Hide owner, group, permissions and other details initially."
   :type 'boolean
   :group 'emacs-nxs-dired)
@@ -30,8 +30,9 @@
   (hl-line-mode 1)
   (setq-local truncate-lines t)
   (setq-local line-spacing 0.08)
-  (when emacs-nxs-dired-hide-details
-    (dired-hide-details-mode 1)))
+  (dired-omit-mode 1)
+  (dired-hide-details-mode (if emacs-nxs-dired-hide-details 1 -1))
+  (emacs-nxs-dired--enable-icons))
 
 (defun emacs-nxs-dired-toggle-dotfiles ()
   "Toggle hidden files in the current Dired buffer."
@@ -53,12 +54,14 @@
 
 (use-package nerd-icons-dired
   :ensure t
-  :after (dired nerd-icons)
-  :hook (dired-mode . emacs-nxs-dired--enable-icons))
+  :commands nerd-icons-dired-mode
+  :config
+  (setf (alist-get 'nerd-icons-dired-mode minor-mode-alist) '(" Nerd-Icons")))
 
 (defun emacs-nxs-dired--enable-icons ()
   "Enable Nerd Icons in local Dired buffers when configured."
-  (when (and emacs-nxs-dired-show-icons
+  (when (and (display-graphic-p)
+             emacs-nxs-dired-show-icons
              (not (file-remote-p default-directory)))
     (nerd-icons-dired-mode 1)))
 
@@ -67,6 +70,7 @@
   :after dired
   :bind (:map dired-mode-map
               ("TAB" . dired-subtree-toggle)
+              ("<tab>" . dired-subtree-toggle)
               ("<backtab>" . dired-subtree-cycle)))
 
 (add-hook 'dired-mode-hook #'emacs-nxs-dired--setup)
