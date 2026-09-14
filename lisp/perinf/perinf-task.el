@@ -239,11 +239,32 @@ Each timer is stopped exactly at its last recorded activity plus
              (not (equal perinf-task-activity-task-id task-id)))
     (perinf-task-associate-buffer task-id (current-buffer))))
 
-(add-hook 'find-file-hook #'perinf-task-auto-associate-current-buffer)
-(add-hook 'after-change-major-mode-hook #'perinf-task-auto-associate-current-buffer)
-(add-hook 'post-command-hook #'perinf-task-record-buffer-activity)
-(unless noninteractive
-  (perinf-task-install-inactivity-check))
+;;;###autoload
+(define-minor-mode perinf-task-activity-mode
+  "Track PerInf task activity and check for inactive task timers globally.
+Enable explicitly to install activity hooks and the periodic check.
+Disabling leaves saved associations and running task timers unchanged;
+automatic activity recording and automatic stopping cease."
+  :global t
+  :group 'perinf
+  :lighter nil
+  (if perinf-task-activity-mode
+      (progn
+        (perinf-task-install-inactivity-check)
+        (add-hook 'find-file-hook #'perinf-task-auto-associate-current-buffer)
+        (add-hook 'after-change-major-mode-hook
+                  #'perinf-task-auto-associate-current-buffer)
+        (add-hook 'post-command-hook #'perinf-task-record-buffer-activity)
+        (dolist (buffer (buffer-list))
+          (with-current-buffer buffer
+            (perinf-task-auto-associate-current-buffer))))
+    (remove-hook 'find-file-hook #'perinf-task-auto-associate-current-buffer)
+    (remove-hook 'after-change-major-mode-hook
+                 #'perinf-task-auto-associate-current-buffer)
+    (remove-hook 'post-command-hook #'perinf-task-record-buffer-activity)
+    (when (timerp perinf-task-inactivity-check-timer)
+      (cancel-timer perinf-task-inactivity-check-timer))
+    (setq perinf-task-inactivity-check-timer nil)))
 
 (defun perinf-task--project-setting (project property)
   "Return PROPERTY from PROJECT metadata."
@@ -473,13 +494,8 @@ The task remains active, and a running timer continues from zero."
       (perinf-core-work))))
 
 (defun perinf-task-unload-function ()
-  "Remove PerInf activity hooks and cancel its timer before unloading."
-  (remove-hook 'find-file-hook #'perinf-task-auto-associate-current-buffer)
-  (remove-hook 'after-change-major-mode-hook
-               #'perinf-task-auto-associate-current-buffer)
-  (remove-hook 'post-command-hook #'perinf-task-record-buffer-activity)
-  (when (timerp perinf-task-inactivity-check-timer)
-    (cancel-timer perinf-task-inactivity-check-timer))
+  "Disable activity tracking before unloading."
+  (perinf-task-activity-mode -1)
   nil)
 
 (provide 'perinf-task)
