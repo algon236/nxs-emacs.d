@@ -28,8 +28,9 @@
 
 ;;; Commentary:
 
-;; Personal Work and Information System presents tasks, meetings, people, transcripts, and minutes while
-;; keeping ordinary Org files as the persistent source of truth.
+;; Personal Work and Information System presents tasks, meetings, people,
+;; transcripts, and minutes while keeping ordinary Org files as the
+;; persistent source of truth.
 
 ;;; Code:
 

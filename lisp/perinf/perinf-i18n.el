@@ -86,8 +86,8 @@ neither locale contains a translation."
     (list :missing (cl-set-difference canonical translated)
           :unknown (cl-set-difference translated canonical))))
 
-(defvar perinf-i18n-danish-errors nil
-  "Danish validation messages keyed by their canonical English format string.")
+;; Defined by perinf-locale-da after this module has loaded.
+(defvar perinf-i18n-danish-errors)
 
 (defun perinf-i18n-user-error (message &rest arguments)
   "Signal a localized user error using MESSAGE and ARGUMENTS.

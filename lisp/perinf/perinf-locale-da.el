@@ -386,7 +386,7 @@
    (work.approvals . "Referater til endelig godkendelse")
    (work.no-approvals . "Ingen referater afventer endelig godkendelse.")
    (work.title . "Arbejde")))
-(setq perinf-i18n-danish-errors
+(defconst perinf-i18n-danish-errors
       '(("Date input is not implemented for: %S" . "Datoindtastning understøttes ikke for: %S")
         ("Date does not match the selected format" . "Datoen passer ikke til det valgte format")
         ("Invalid date: %s" . "Ugyldig dato: %s")
@@ -441,7 +441,8 @@
         ("Unsupported attendance status: %s" . "Fremmødestatus understøttes ikke: %s")
         ("This person is already a participant" . "Personen er allerede deltager")
         ("Agenda number and title are required" . "Dagsordenspunktets nummer og titel skal udfyldes")
-        ("This agenda number already exists" . "Dagsordensnummeret findes allerede")))
+        ("This agenda number already exists" . "Dagsordensnummeret findes allerede"))
+  "Danish validation messages keyed by canonical English format strings.")
 
 (provide 'perinf-locale-da)
 ;;; perinf-locale-da.el ends here

@@ -3953,6 +3953,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 (setq perinf-interface-language 'da
       perinf-interface-language-override 'da)
 (require 'perinf)
+(perinf-task-activity-mode 1)
 (require 'emacs-nxs-themes)
 (require 'emacs-nxs-movements)
 (require 'emacs-nxs-formatter)
