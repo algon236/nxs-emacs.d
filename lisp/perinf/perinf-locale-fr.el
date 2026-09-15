@@ -29,6 +29,10 @@
 (perinf-i18n-register-locale
  'fr
  '((app.name . "Personal Work and Information System")
+   (memo.capture . "Pense-bête")
+   (memo.missing . "Le pense-bête n’existe plus.")
+   (memo.close-save . "Fermer et enregistrer")
+   (memo.open . "Afficher les pense-bêtes")
    (common.close . "Fermer")
    (common.cancel . "Annuler")
    (common.error . "Erreur")

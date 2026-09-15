@@ -29,6 +29,10 @@
 (perinf-i18n-register-locale
  'da
  '((app.name . "Personligt arbejds- og informationssystem")
+   (memo.capture . "Husk")
+   (memo.missing . "Noten findes ikke længere.")
+   (memo.close-save . "Luk og gem")
+   (memo.open . "Vis Husk")
    (common.close . "Luk")
    (common.cancel . "Annullér")
    (common.error . "Fejl")

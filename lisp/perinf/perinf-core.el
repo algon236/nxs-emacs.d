@@ -41,6 +41,7 @@
 (require 'perinf-time)
 (require 'perinf-meeting)
 (require 'perinf-person)
+(require 'perinf-memo)
 (require 'perinf-object-types)
 (require 'perinf-properties)
 (require 'perinf-statuses)
@@ -399,6 +400,16 @@ Keyboard button actions run COMMAND immediately."
               (lambda (_button)
                 (call-interactively #'perinf-core-search)))))
           (insert "\n"))
+        (perinf-core--insert-button
+         (perinf-i18n 'memo.capture)
+         (lambda (_button)
+           (perinf-core--call-interactively-from-button #'perinf-capture-memo)))
+        (insert "\n")
+        (perinf-core--insert-button
+         (perinf-i18n 'memo.open)
+         (lambda (_button)
+           (perinf-core--call-interactively-from-button #'perinf-open-memos)))
+        (insert "\n")
         (if (or tasks meetings people transcripts minutes)
             (perinf-core--render-dashboard-summary
              tasks meetings people transcripts minutes)

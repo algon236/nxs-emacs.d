@@ -29,6 +29,10 @@
 (perinf-i18n-register-locale
  'de
  '((app.name . "Personal Work and Information System")
+   (memo.capture . "Merkzettel")
+   (memo.missing . "Der Merkzettel existiert nicht mehr.")
+   (memo.close-save . "Schließen und speichern")
+   (memo.open . "Merkzettel anzeigen")
    (common.close . "Schließen")
    (common.cancel . "Abbrechen")
    (common.error . "Fehler")

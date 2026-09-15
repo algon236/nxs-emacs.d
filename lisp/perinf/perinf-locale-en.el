@@ -29,6 +29,10 @@
 (perinf-i18n-register-locale
  'en
  '((app.name . "Personal Work and Information System")
+   (memo.capture . "Memo")
+   (memo.missing . "The memo no longer exists.")
+   (memo.close-save . "Close and save")
+   (memo.open . "Show memos")
    (common.close . "Close")
    (common.cancel . "Cancel")
    (common.error . "Error")

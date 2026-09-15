@@ -861,6 +861,8 @@ or is an ERC buffer."
 
   (defvar emacs-nxs/start-buffer-name "*Start*")
   (defvar emacs-nxs/start-max-items 10)
+  (defvar emacs-nxs/start-perinf-max-items 20
+    "Maximum number of PerInf entries shown on the start page.")
   (defcustom emacs-nxs/start-perinf-project-directory
     (expand-file-name "~/org/PerInf/")
     "Personal Work and Information System project shown on the start page."
@@ -917,7 +919,7 @@ Objects without a date and objects in the past remain visible."
           event-time))))
 
   (defun emacs-nxs/start--perinf-items ()
-    "Return active PerInf tasks and meetings, sorted by date.
+    "Return active PerInf tasks, meetings and memos, sorted by date.
 Tasks without a deadline are placed after dated objects."
     (require 'perinf)
     (let ((project
@@ -957,6 +959,22 @@ Tasks without a deadline are placed after dated objects."
                     (format "Møde: %s" (perinf-object-title meeting)))
                   meeting event-time)
                  items))))))
+      (when (perinf-project-p project)
+        (dolist (memo (perinf-memo-list project))
+          (let ((event-time (plist-get memo :time)))
+            (when (emacs-nxs/start--perinf-within-horizon-p event-time)
+              (push
+               (list
+                (concat
+                 (when event-time
+                   (format-time-string
+                    (if (string-match-p "[0-9][0-9]:[0-9][0-9]"
+                                        (plist-get memo :scheduled))
+                        "%d-%m-%Y %H:%M  " "%d-%m-%Y  ")
+                    event-time))
+                 "Husk: " (plist-get memo :title))
+                memo event-time)
+               items)))))
       (mapcar
        (lambda (item) (seq-take item 2))
        (seq-take
@@ -970,7 +988,7 @@ Tasks without a deadline are placed after dated objects."
                (time-less-p left-time right-time))
               (left-time t)
               (t nil)))))
-        emacs-nxs/start-max-items))))
+        emacs-nxs/start-perinf-max-items))))
 
   (defun emacs-nxs/start--open-bookmark (button)
     "Open the bookmark stored in BUTTON."
@@ -979,7 +997,10 @@ Tasks without a deadline are placed after dated objects."
   (defun emacs-nxs/start--open-perinf-object (button)
     "Open the PerInf object stored in BUTTON."
     (perinf-core-open emacs-nxs/start-perinf-project-directory)
-    (perinf-core-show-object (button-get button 'perinf-object)))
+    (let ((object (button-get button 'perinf-object)))
+      (if (and (listp object) (eq (plist-get object :type) 'memo))
+          (perinf-memo-open object)
+        (perinf-core-show-object object))))
 
   (defun emacs-nxs/start--insert-item (label width action property value)
     "Insert LABEL as a button of WIDTH, using ACTION and PROPERTY VALUE."
@@ -3954,6 +3975,14 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
       perinf-interface-language-override 'da)
 (require 'perinf)
 (perinf-task-activity-mode 1)
+(defun emacs-nxs/start-refresh-after-capture ()
+  "Refresh the dashboard after a capture has finished."
+  (when (get-buffer "*Start*")
+    (with-current-buffer "*Start*" (emacs-nxs/start-refresh))))
+(add-hook 'org-capture-after-finalize-hook #'emacs-nxs/start-refresh-after-capture)
+(add-hook 'perinf-memo-after-close-hook #'emacs-nxs/start-refresh-after-capture)
+;; Simple PerInf memo capture; keep the existing lowercase h template.
+(add-to-list 'org-capture-templates (perinf-memo-capture-template "H") t)
 (require 'emacs-nxs-themes)
 (require 'emacs-nxs-movements)
 (require 'emacs-nxs-formatter)

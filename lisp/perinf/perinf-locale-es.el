@@ -29,6 +29,10 @@
 (perinf-i18n-register-locale
  'es
  '((app.name . "Personal Work and Information System")
+   (memo.capture . "Nota recordatoria")
+   (memo.missing . "La nota recordatoria ya no existe.")
+   (memo.close-save . "Cerrar y guardar")
+   (memo.open . "Ver notas recordatorias")
    (common.close . "Cerrar")
    (common.cancel . "Cancelar")
    (common.error . "Error")

@@ -161,6 +161,15 @@
     (format-time-string "%Y-%m-%dT%H:%M:%S%:z"
                         (encode-time second minute hour day month year))))
 
+(defun perinf-storage--meeting-start (date time)
+  "Return the meeting DATE, including TIME only when it is known.
+DATE must be a valid normalized ISO date.  A nil TIME leaves it date-only."
+  (unless (and (stringp date)
+               (string-match-p "\\`[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\'" date))
+    (perinf-i18n-user-error "Invalid date: %s" date))
+  (perinf-date-normalize date 'iso)
+  (if time (perinf-storage--datetime date time) date))
+
 (defun perinf-storage--safe-file-name (value)
   "Return a conservative file-name component derived from VALUE."
   (let ((name (downcase (perinf-storage--safe-line value))))
@@ -179,7 +188,7 @@
          (finish-time (alist-get 'finish-time data))
          (location (perinf-storage--safe-line
                     (or (alist-get 'location data) "")))
-         (start-at (perinf-storage--datetime date start-time))
+         (start-at (perinf-storage--meeting-start date start-time))
          (finish-at (and finish-time
                          (perinf-storage--datetime date finish-time)))
          (id (concat "meeting-" (org-id-uuid)))
@@ -195,7 +204,7 @@
                 directory)))
     (when (string-empty-p title)
       (perinf-i18n-user-error "Meeting title must not be empty"))
-    (when (and finish-at (not (string< start-at finish-at)))
+    (when (and start-time finish-at (not (string< start-at finish-at)))
       (perinf-i18n-user-error "Meeting finish time must be after start time"))
     (make-directory directory t)
     (with-temp-buffer
@@ -729,6 +738,7 @@ running.  Use PROJECT-DIRECTORY for storage."
     (meeting-id data &optional project-directory)
   "Update MEETING-ID from DATA in PROJECT-DIRECTORY.
 DATA may contain `title', `date', `start-time', `finish-time', and `location'.
+The date is required; nil times represent times that are not yet known.
 The meeting ID, status, linked children, and imported artifacts are preserved."
   (let* ((project
           (or project-directory
@@ -746,8 +756,7 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
          (finish-time (alist-get 'finish-time data))
          (location (perinf-storage--safe-line
                     (or (alist-get 'location data) "")))
-         (start-at (and date start-time
-                        (perinf-storage--datetime date start-time)))
+         (start-at (perinf-storage--meeting-start date start-time))
          (finish-at (and date finish-time
                          (perinf-storage--datetime date finish-time)))
          (file (and meeting (perinf-object-file meeting))))
@@ -755,9 +764,7 @@ The meeting ID, status, linked children, and imported artifacts are preserved."
       (signal 'perinf-object-not-found (list meeting-id)))
     (when (string-empty-p title)
       (perinf-i18n-user-error "Meeting title must not be empty"))
-    (unless (and date start-time)
-      (perinf-i18n-user-error "Meeting date and start time must not be empty"))
-    (when (and finish-at (not (string< start-at finish-at)))
+    (when (and start-time finish-at (not (string< start-at finish-at)))
       (perinf-i18n-user-error "Meeting finish time must be after start time"))
     (unless (file-readable-p file)
       (signal 'perinf-storage-error
