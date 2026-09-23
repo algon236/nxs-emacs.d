@@ -9,7 +9,7 @@
 ;;; This is a clone with changes from the above
 ;;  Author: Niels Søndergaard
 ;;  URL: https://algon.dk
-;;  Copyright: none
+;;  Copyright (C) 2026 Niels Søndergaard (NXS additions)
 ;;; Commentary:
 ;;  Init configuration for Emacs NXS
 ;;
@@ -74,7 +74,7 @@
 (setq use-package-always-ensure nil)
 (defconst emacs-nxs-required-packages
   '(auctex card-games casual dired-subtree eat nerd-icons nerd-icons-dired
-    org-draw org-modern org-roam org-roam-ui pdf-tools)
+    org-draw org-modern org-roam org-roam-ui paredit pdf-tools)
   "External packages used by this configuration; dependencies install with them.")
 
 (defun emacs-nxs/install-missing-packages ()
@@ -3763,8 +3763,9 @@ As seen on: https://emacs.dyerdwelling.family/emacs/20250604085817-emacs--buildi
 
 
 
-;;; ├──────────────────── COMMON LISP
-;;  │  Configured in lisp/emacs-nxs-cl.el (required below).
+;;; ├──────────────────── EMACS-LISP
+(require 'emacs-nxs-elisp
+         (expand-file-name "lisp/emacs-nxs-elisp.el" user-emacs-directory))
 
 ;;; ├──────────────────── NON TREESITTER AREA
 ;;; │ SASS-MODE
