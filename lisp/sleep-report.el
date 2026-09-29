@@ -6,7 +6,7 @@
 (require 'calendar)
 (require 'subr-x)
 
-(defconst emacs-nxs-sleep-report-version 16
+(defconst emacs-nxs-sleep-report-version 18
   "Projektets heltalsversion.")
 
 (defgroup emacs-nxs-sleep-report nil
@@ -314,87 +314,99 @@ morgen, middag og aften."
              fill draw header)
      (format "  dato  %s\n%s\n};\n" header data))))
 
-(defun emacs-nxs-sleep-report--blood-pressure-plot (rows)
-  "Lav sys- og dia-kurver for morgen, middag og aften fra ROWS.
-Manglende eller ugyldige målinger udelades enkeltvis.  Sys og dia for
-samme tidspunkt bruger samme farve og skelnes med linje og markør.
-Hver serie med mindst to målinger får en lineær tendenslinje fra den
-første til den sidste dag i målingernes måned.  Dia under 60 er en
-operatørfejl; sys over 160 udelades fra plottet."
-  (let (plots)
-    (dolist (series '((3 sys "morgen-sys" "Morgen sys" "morgen" "blue" "solid" "*")
-                      (4 dia "morgen-dia" "Morgen dia" "morgen" "blue" "dashed" "square*")
-                      (5 sys "middag-sys" "Middag sys" "middag" "red" "solid" "*")
-                      (6 dia "middag-dia" "Middag dia" "middag" "red" "dashed" "square*")
-                      (7 sys "aften-sys" "Aften sys" "aften" "green!60!black" "solid" "*")
-                      (8 dia "aften-dia" "Aften dia" "aften" "green!60!black" "dashed" "square*")))
-      (let* ((column (nth 0 series))
-             (kind (nth 1 series))
-             (header (nth 2 series))
-             (legend (nth 3 series))
-             (time-of-day (nth 4 series))
-             (color (nth 5 series))
-             (line-style (nth 6 series))
-             (mark (nth 7 series))
-             (valid
-              (cl-loop for row in (cdr rows)
-                       for date = (emacs-nxs-sleep-report--date-iso (car row))
-                       for value = (emacs-nxs-sleep-report--number (nth column row))
-                       when (and date value (eq kind 'dia) (< value 60))
-                       do (user-error
-                           "Blodtryk %s: dia for %s er %.1f; værdien må ikke være under 60"
-                           date time-of-day value)
-                       when (and date value
-                                 (or (eq kind 'dia) (<= value 160)))
-                       collect (cons (string-to-number (substring date 8 10))
-                                     value)))
-             (first-date
-              (cl-loop for row in (cdr rows)
-                       for date = (emacs-nxs-sleep-report--date-iso (car row))
-                       when date return date))
-             (month-end
-              (when first-date
-                (calendar-last-day-of-month
-                 (string-to-number (substring first-date 5 7))
-                 (string-to-number (substring first-date 0 4)))))
-             (regression
-              (when (> (length valid) 1)
-                (let* ((count (float (length valid)))
-                       (sum-x (cl-loop for entry in valid sum (car entry)))
-                       (sum-y (cl-loop for entry in valid sum (cdr entry)))
-                       (sum-xx (cl-loop for entry in valid
-                                        sum (* (car entry) (car entry))))
-                       (sum-xy (cl-loop for entry in valid
-                                        sum (* (car entry) (cdr entry))))
-                       (denominator (- (* count sum-xx) (* sum-x sum-x))))
-                  (unless (zerop denominator)
-                    (let* ((slope (/ (- (* count sum-xy) (* sum-x sum-y))
-                                     denominator))
-                           (intercept (/ (- sum-y (* slope sum-x)) count)))
-                      (list (+ intercept slope)
-                            (+ intercept (* slope month-end)))))))))
-        (when valid
-          (push
-           (concat
-            (format "\\addplot+[color=%s, %s, mark=%s, mark options={fill=%s!40}] table[x=dato,y=%s] {\n"
-                    color line-style mark color header)
-            (format "  dato  %s\n%s\n};\n"
-                    header
-                    (mapconcat
-                     (lambda (entry)
-                       (format "  %d  %.4f" (car entry) (cdr entry)))
-                     valid "\n"))
-            (format "\\addlegendentry{%s}\n" legend)
-            (when regression
-              (concat
-               (format "\\addplot+[color=%s, densely dotted, very thick, no marks, forget plot] coordinates {"
-                       color)
-               (format "(1,%.4f) (%d,%.4f)};\n"
-                       (nth 0 regression) month-end (nth 1 regression)))))
-           plots))))
-    (unless plots
-      (user-error "Ingen gyldige blodtryksmålinger til plottet"))
-    (mapconcat #'identity (nreverse plots) "\n")))
+(defun emacs-nxs-sleep-report--bp-series (rows)
+  "Returnér seks serier med alle, medtagne og udeladte målinger.
+Grænserne er 7,5 procent for sys og 15 procent for dia, beregnet én
+gang fra hver series oprindelige gennemsnit. Grænsepunkter medtages."
+  (cl-loop for spec in '((3 sys "Morgen" "blue") (4 dia "Morgen" "blue")
+                        (5 sys "Middag" "red") (6 dia "Middag" "red")
+                        (7 sys "Aften" "green!60!black") (8 dia "Aften" "green!60!black"))
+           collect
+           (let* ((points (cl-loop for row in (cdr rows)
+                                  for date = (emacs-nxs-sleep-report--date-iso (car row))
+                                  for value = (emacs-nxs-sleep-report--number (nth (car spec) row))
+                                  when (and date value)
+                                  collect (cons (string-to-number (substring date 8 10)) value)))
+                  (mean (when points (/ (apply #'+ (mapcar #'cdr points)) (float (length points)))))
+                  (limit (if (eq (nth 1 spec) 'sys) 0.075 0.15))
+                  kept omitted)
+             (dolist (point points)
+               (if (<= (abs (- (cdr point) mean)) (+ (* (abs mean) limit) 1e-9))
+                   (push point kept)
+                 (push point omitted)))
+             (list :kind (nth 1 spec) :label (nth 2 spec) :color (nth 3 spec)
+                   :all points :kept (nreverse kept) :omitted (nreverse omitted)))))
+
+(defun emacs-nxs-sleep-report--bp-coordinates (points)
+  (mapconcat (lambda (p) (format "(%d,%.6f)" (car p) (cdr p))) points " "))
+
+(defun emacs-nxs-sleep-report--blood-pressure-plot (rows &optional kind)
+  "Forbind alle numeriske målinger; beregn tendens uden markerede afvigelser.
+KIND begrænser plottet til sys eller dia. Ingen faste blodtryksgrænser."
+  (mapconcat
+   (lambda (series)
+     (let* ((points (plist-get series :all)) (kept (plist-get series :kept))
+            (omitted (plist-get series :omitted)) (color (plist-get series :color))
+            (n (length kept)) (sx (apply #'+ (mapcar #'car kept)))
+            (sy (apply #'+ (mapcar #'cdr kept)))
+            (sxx (cl-loop for (x . _y) in kept sum (* x x)))
+            (sxy (cl-loop for (x . y) in kept sum (* x y)))
+            (den (- (* n sxx) (* sx sx))))
+       (when points
+         (concat
+          (format "\\addplot+[color=%s,solid,mark=*,mark size=1.5pt] coordinates {%s};\n\\addlegendentry{%s}\n"
+                  color (emacs-nxs-sleep-report--bp-coordinates points) (plist-get series :label))
+          (when omitted
+            (format "\\addplot+[color=%s,only marks,mark=x,mark size=3pt,very thick,forget plot] coordinates {%s};\n"
+                    color (emacs-nxs-sleep-report--bp-coordinates omitted)))
+          (when (and (> n 1) (> den 0))
+            (let* ((slope (/ (- (* n sxy) (* sx sy)) (float den)))
+                   (intercept (/ (- sy (* slope sx)) n))
+                   (first (apply #'min (mapcar #'car kept)))
+                   (last (apply #'max (mapcar #'car kept))))
+              (format "\\addplot+[color=%s,densely dotted,very thick,no marks,forget plot] coordinates {(%d,%.6f) (%d,%.6f)};\n"
+                      color first (+ intercept (* slope first)) last (+ intercept (* slope last)))))))))
+   (cl-remove-if-not (lambda (s) (or (null kind) (eq kind (plist-get s :kind))))
+                     (emacs-nxs-sleep-report--bp-series rows)) "\n"))
+
+(defun emacs-nxs-sleep-report--bp-summary (points)
+  "Formatér gennemsnit og stikprøvens SD; SD kræver mindst to punkter."
+  (if (null points) "---"
+    (let* ((n (length points)) (mean (/ (apply #'+ (mapcar #'cdr points)) (float n)))
+           (sd (when (> n 1)
+                 (sqrt (/ (cl-loop for (_x . y) in points sum (expt (- y mean) 2)) (1- n))))))
+      (replace-regexp-in-string
+       "\\." "," (format "%0.1f $\\pm$ %s" mean (if sd (format "%.1f" sd) "---"))))))
+
+(defun emacs-nxs-sleep-report--bp-page (rows)
+  "Lav to grafer og spredningstabel på samme side."
+  (let ((series (emacs-nxs-sleep-report--bp-series rows)))
+    (concat
+     "\\begin{center}\n{\\large\\bfseries Blodtryk -- \\SleepPeriod}\\par\n"
+     "{\\small Sys: $\\pm7{,}5\\%$; dia: $\\pm15\\%$ af oprindeligt gennemsnit.}\\par\n"
+     (mapconcat
+      (lambda (kind)
+        (concat
+         (format "\\begin{tikzpicture}\n\\begin{axis}[reportaxis,height=0.24\\textheight,title={%s},xlabel={Dag},ylabel={mmHg},xmin=0,xmax=32,xtick={1,3,...,31},legend columns=3,legend style={at={(0.5,1.02)},anchor=south,font=\\scriptsize},title style={at={(0.5,1.20)},font=\\normalsize\\bfseries}]\n"
+                 (if (eq kind 'sys) "Systolisk blodtryk" "Diastolisk blodtryk"))
+         (emacs-nxs-sleep-report--blood-pressure-plot rows kind)
+         "\\end{axis}\n\\end{tikzpicture}\\par\\vspace{5mm}\n")) '(sys dia) "\n")
+     "{\\small\\bfseries Gennemsnit og spredning af medtagne målinger}\\par\n"
+     "\\begin{tblr}{width=\\textwidth,colspec={Q[l,1] Q[r,1] Q[r,1.3] Q[r,1.3] Q[r,1.1]},row{even}={bg=GreenYellow!10},row{1}={bg=DarkGreen,fg=white,font=\\bfseries},hlines,vlines,cells={font=\\footnotesize},rowsep=2pt}\nTidspunkt & Antal sys/dia & Sys: gns. $\\pm$ SD & Dia: gns. $\\pm$ SD & Udeladt sys/dia \\\\\n"
+     (mapconcat
+      (lambda (i)
+        (let* ((sys (nth i series)) (dia (nth (1+ i) series))
+               (s (plist-get sys :kept)) (d (plist-get dia :kept)))
+          (format "%s & %d / %d & %s & %s & %d / %d \\\\\n"
+                  (plist-get sys :label) (length s) (length d)
+                  (emacs-nxs-sleep-report--bp-summary s) (emacs-nxs-sleep-report--bp-summary d)
+                  (length (plist-get sys :omitted)) (length (plist-get dia :omitted))))) '(0 2 4) "")
+     "\\end{tblr}\n\\end{center}\n"
+     "{\\footnotesize Gennemsnit og SD i mmHg. SD bruger $n-1$; --- betyder utilstrækkelige data.\\par\n"
+     "Alle målepunkter forbindes. Kryds udelades kun fra beregninger og prikkede tendenslinjer.\\par\n"
+     "Frasortering sker én gang pr. serie; punkter på grænsen medtages. Ingen fast 160-grænse.\\par\n"
+     "Spredningen gælder de medtagne målinger og er ikke apparatets måleusikkerhed.\\par\n"
+     "Grafernes y-skalaer tilpasses hver for sig.}\\par\n")))
 
 (defun emacs-nxs-sleep-report--generate
     (directory table-name rows medicine-rows blood-pressure-rows)
@@ -466,6 +478,10 @@ operatørfejl; sys over 160 udelades fra plottet."
     (emacs-nxs-sleep-report--write
      (expand-file-name "plot-blood-pressure.tex" out)
      (emacs-nxs-sleep-report--blood-pressure-plot blood-pressure-rows))
+
+    (emacs-nxs-sleep-report--write
+     (expand-file-name "blood-pressure-page.tex" out)
+     (emacs-nxs-sleep-report--bp-page blood-pressure-rows))
 
     ;; Kun rækker med gyldige tider medtages i søvnplottet.
     ;; Nederste del: faktisk søvn.
