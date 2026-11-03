@@ -34,6 +34,13 @@
 (require 'perinf-project-schema)
 (require 'perinf-i18n)
 
+(defcustom perinf-default-project-directory
+  (expand-file-name "~/org/agenda/")
+  "Default directory for the personal agenda project.
+Used when opening without a selected project and when creating a project."
+  :type 'directory
+  :group 'perinf)
+
 (defvar perinf-current-project nil
   "Directory of the current Personal Work and Information System project, or nil.")
 
@@ -66,7 +73,10 @@ Return an alist with language-independent property names."
       (perinf-i18n-user-error "Personal Work and Information System project metadata is not readable: %s" file))
     (with-temp-buffer
       (insert-file-contents file)
-      (delay-mode-hooks (org-mode))
+      ;; Internal parsing needs neither the agenda menu nor visual startup.
+      (let ((org-agenda-file-menu-enabled nil)
+            (org-inhibit-startup t))
+        (delay-mode-hooks (org-mode)))
       (goto-char (point-min))
       (unless (re-search-forward org-heading-regexp nil t)
         (perinf-i18n-user-error "Personal Work and Information System project metadata has no heading: %s" file))

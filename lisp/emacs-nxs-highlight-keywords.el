@@ -15,6 +15,8 @@
 
 ;;; Code:
 
+(require 'compile)
+
 (use-package emacs-nxs-highlight-keywords-mode
   :if emacs-nxs-enable-highlight-keywords
   :ensure nil
@@ -64,13 +66,13 @@
         (emacs-nxs/highlight-keywords-mode-on)
       (emacs-nxs/highlight-keywords-mode-off)))
 
+  (defun emacs-nxs/highlight-keywords-maybe-enable ()
+    "Enable keyword highlighting in the current file's programming buffer."
+    (when (and buffer-file-name
+               (not (string-prefix-p "*" (buffer-name))))
+      (emacs-nxs/highlight-keywords-mode 1)))
   :hook
-  (prog-mode-hook .
-                  (lambda ()
-                    (when (and buffer-file-name ; only if it's visiting a file
-                               (not (string-match-p "^\\*" (buffer-name)))) ; avoid *scratch*, etc.
-                      (message "[emacs-nxs-highlight-keywords-mode]: running on buffer %s" (buffer-name))
-                      (run-with-idle-timer 1 nil #'emacs-nxs/highlight-keywords-mode-on)))))
+  (prog-mode-hook . emacs-nxs/highlight-keywords-maybe-enable))
 
 (provide 'emacs-nxs-highlight-keywords)
 ;;; emacs-nxs-highlight-keywords.el ends here

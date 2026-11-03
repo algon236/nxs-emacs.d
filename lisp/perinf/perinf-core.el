@@ -28,6 +28,7 @@
 ;;; Code:
 
 (require 'seq)
+(require 'cl-lib)
 (require 'subr-x)
 
 (require 'button)
@@ -40,13 +41,15 @@
 (require 'perinf-task)
 (require 'perinf-time)
 (require 'perinf-meeting)
+(require 'perinf-recording)
 (require 'perinf-person)
 (require 'perinf-memo)
+(require 'perinf-statistics)
 (require 'perinf-object-types)
 (require 'perinf-properties)
 (require 'perinf-statuses)
 
-(defconst perinf-version "1.0.1"
+(defconst perinf-version "1.0.2"
   "Current Personal Work and Information System application version.")
 
 (defcustom perinf-last-project-directory nil
@@ -101,6 +104,109 @@ part of the persistent shared Org data."
           (get-buffer-create (format "*%s*" (perinf-i18n 'app.name)))))
   perinf-core--main-buffer)
 
+(defvar-local perinf-core--clock-projects nil
+  "Projects whose clocks belong to this UI buffer.")
+
+(defvar-local perinf-core--clock-timer nil
+  "Ten-second display timer belonging to this UI buffer.")
+
+(defvar-local perinf-core--clock-start nil
+  "Marker at the beginning of the clock display.")
+
+(defvar-local perinf-core--clock-end nil
+  "Marker at the end of the clock display.")
+
+(defun perinf-core--clock-label (project)
+  "Return a compact title for PROJECT."
+  (let* ((title (or (alist-get 'PROJECT_TITLE
+                               (perinf-storage-read-project project))
+                    (file-name-nondirectory (directory-file-name project))))
+         (words (split-string title "[^[:alnum:]]+" t)))
+    (if (> (length words) 1)
+        (upcase (mapconcat (lambda (word) (substring word 0 1))
+                           (seq-take words 6) ""))
+      (truncate-string-to-width title 8 nil nil "…"))))
+
+(defun perinf-core--clock-text ()
+  "Build one boxed line per running clock owned by this buffer."
+  (let ((now (current-time)) lines)
+    (dolist (project perinf-core--clock-projects)
+      (let ((label (perinf-core--clock-label project)))
+        (dolist (task (append (perinf-storage-list 'task project)
+                              (perinf-storage-list 'meeting project)))
+          (when (alist-get (if (eq (perinf-object-type task) 'meeting)
+                               'MEETING_TIMER_STARTED_AT 'TASK_TIMER_STARTED_AT)
+                          (perinf-object-properties task))
+            (push
+             (concat
+              (propertize
+               (format " %s · %s · %s " label
+                       (truncate-string-to-width
+                        (replace-regexp-in-string
+                         "[\n\r\t]+" " " (perinf-object-title task))
+                        32 nil nil "…")
+                       (perinf-task-format-work-time
+                        (if (eq (perinf-object-type task) 'meeting)
+                            (perinf-meeting-extra-seconds task now)
+                          (perinf-task-total-work-seconds task now))))
+               'face '(:box (:line-width 1 :style released-button))
+               'help-echo (concat project " — " (perinf-object-title task)))
+              "\n")
+             lines)))))
+    (if lines (concat (apply #'concat (nreverse lines)) "\n") "")))
+
+(defun perinf-core--update-clocks (buffer)
+  "Update visible BUFFER's clock lines without redrawing its current view.
+This only updates the display; hidden task timers keep running."
+  (when (and (buffer-live-p buffer) (get-buffer-window buffer 'visible))
+    (with-current-buffer buffer
+      (when (and (markerp perinf-core--clock-start)
+                 (marker-position perinf-core--clock-start)
+                 (marker-position perinf-core--clock-end))
+        (let ((text (perinf-core--clock-text))
+              (inhibit-read-only t))
+          (unless (equal text (buffer-substring
+                               perinf-core--clock-start perinf-core--clock-end))
+            (save-excursion
+              (goto-char perinf-core--clock-start)
+              (delete-region perinf-core--clock-start perinf-core--clock-end)
+              (insert text)
+              (set-marker perinf-core--clock-end (point)))))))))
+
+(defun perinf-core--stop-buffer-clocks ()
+  "Save and stop this buffer's clocks before allowing it to be killed.
+Hidden buffers keep running.  A storage error prevents deletion."
+  (let ((now (current-time)))
+    (dolist (project perinf-core--clock-projects)
+      (dolist (task (perinf-storage-list 'task project))
+        (when (alist-get 'TASK_TIMER_STARTED_AT (perinf-object-properties task))
+          (perinf-storage-stop-task-timer (perinf-object-id task) project now)))
+      (dolist (meeting (perinf-storage-list 'meeting project))
+        (when (alist-get 'MEETING_TIMER_STARTED_AT (perinf-object-properties meeting))
+          (perinf-storage-set-meeting-time
+           (perinf-object-id meeting) 'stop nil project now)))))
+  t)
+
+(defun perinf-core--cancel-clock-display ()
+  "Cancel the display timer when this buffer is killed."
+  (when (timerp perinf-core--clock-timer)
+    (cancel-timer perinf-core--clock-timer))
+  (setq perinf-core--clock-timer nil))
+
+(defun perinf-core--insert-clocks ()
+  "Insert clock lines and attach their lifecycle to the current buffer."
+  (when perinf-current-project
+    (cl-pushnew (file-name-as-directory (expand-file-name perinf-current-project))
+                perinf-core--clock-projects :test #'equal))
+  (setq perinf-core--clock-start (copy-marker (point)))
+  (insert (perinf-core--clock-text))
+  (setq perinf-core--clock-end (copy-marker (point)))
+  (add-hook 'kill-buffer-query-functions #'perinf-core--stop-buffer-clocks nil t)
+  (add-hook 'kill-buffer-hook #'perinf-core--cancel-clock-display nil t)
+  (unless (timerp perinf-core--clock-timer)
+    (setq perinf-core--clock-timer
+          (run-with-timer 10 10 #'perinf-core--update-clocks (current-buffer)))))
+
 (defun perinf-core--insert-button (label action &rest properties)
   "Insert a button with LABEL and ACTION using PROPERTIES."
   (apply #'insert-text-button label
@@ -135,6 +241,7 @@ Keyboard button actions run COMMAND immediately."
                    (meetings . perinf-core-meetings)
                    (people . perinf-core-people)
                    (records . perinf-core-records)
+                   (statistics . perinf-statistics)
                    (administration . perinf-core-administration)))
     (perinf-core--insert-button
      (perinf-i18n (intern (format "navigation.%s" (car entry))))
@@ -647,18 +754,8 @@ Keyboard button actions run COMMAND immediately."
                    (perinf-meeting-add-participant
                     (button-get button 'perinf-meeting-id)))
                  'perinf-meeting-id (perinf-object-id meeting))
-                (insert "\n  "
-                        (format "%s: %d"
-                                (perinf-i18n 'agenda.items)
-                                (length agenda-items))
-                        "   ")
-                (perinf-core--insert-button
-                 (perinf-i18n 'action.add-agenda-item)
-                 (lambda (button)
-                   (perinf-core--call-function-from-button
-                    #'perinf-meeting-add-agenda-item
-                    (button-get button 'perinf-meeting-id)))
-                 'perinf-meeting-id (perinf-object-id meeting))
+                (insert "\n  ")
+                (perinf-core--insert-agenda-files (perinf-object-id meeting))
                 (when agenda-items
                   (insert "\n")
                   (dolist (item agenda-items)
@@ -679,6 +776,31 @@ Keyboard button actions run COMMAND immediately."
                             "\n")))
                 (insert "\n\n"))))
         (insert (perinf-i18n 'meeting.none) "\n")))))
+
+(defun perinf-core--insert-agenda-files (meeting-id)
+  "Insert the agenda file controls for MEETING-ID."
+  (insert (propertize (perinf-i18n 'agenda.file-title) 'face 'bold) "   ")
+  (perinf-core--insert-button
+   (perinf-i18n 'agenda.load-file)
+   (lambda (button)
+     (perinf-core--call-function-from-button
+      #'perinf-meeting-load-agenda
+      (button-get button 'perinf-meeting-id)))
+   'perinf-meeting-id meeting-id)
+  (insert "\n")
+  (dolist (document (perinf-storage-list 'document perinf-current-project))
+    (let ((properties (perinf-object-properties document)))
+      (when (and (equal (alist-get 'MEETING_ID properties) meeting-id)
+                 (equal (alist-get 'DOCUMENT_ROLE properties) "agenda"))
+        (insert "    ")
+        (perinf-core--insert-button
+         (perinf-object-title document)
+         (lambda (button)
+           (find-file (button-get button 'perinf-file)))
+         'perinf-file
+         (expand-file-name (alist-get 'FILE_REFERENCE properties)
+                           perinf-current-project))
+        (insert "\n")))))
 
 (defun perinf-core--render-records ()
   "Insert the records view."
@@ -1448,6 +1570,9 @@ Keyboard button actions run COMMAND immediately."
                     (alist-get 'MEETING_ID
                                (perinf-object-properties document))
                     (perinf-object-id object))
+                   (not (equal (alist-get 'DOCUMENT_ROLE
+                                          (perinf-object-properties document))
+                               "agenda"))
                    (null (alist-get 'AGENDA_ITEM_ID
                                     (perinf-object-properties document)))))
                 all-documents))
@@ -1543,6 +1668,28 @@ Keyboard button actions run COMMAND immediately."
            (perinf-core--detail-value
             (perinf-i18n 'details.finish)
             (perinf-time-format finish-at time-format)))
+         (let* ((duration (perinf-meeting-duration-seconds object))
+                (extra (perinf-meeting-extra-seconds object))
+                (running (alist-get 'MEETING_TIMER_STARTED_AT properties)))
+           (dolist (entry `((meeting.duration . ,duration)
+                            (meeting.extra-time . ,extra)
+                            (meeting.total-time . ,(+ duration extra))))
+             (perinf-core--detail-value (perinf-i18n (car entry))
+                                        (perinf-task-format-work-time (cdr entry))))
+           (dolist (entry `((meeting.edit-duration . edit)
+                            (meeting.scheduled-duration . duration)
+                            (,(if running 'meeting.stop-extra 'meeting.start-extra)
+                             . ,(if running 'stop 'start))))
+             (perinf-core--insert-button
+              (perinf-i18n (car entry))
+              (lambda (button)
+                (let ((id (button-get button 'meeting-id))
+                      (action (button-get button 'time-action)))
+                  (if (eq action 'edit) (perinf-meeting-edit-duration id)
+                    (perinf-meeting-change-time id action))))
+              'meeting-id (perinf-object-id object) 'time-action (cdr entry))
+             (insert "  "))
+           (insert "\n\n"))
          (when actual-start-at
            (perinf-core--detail-value
             (perinf-i18n 'meeting.actual-start)
@@ -1576,6 +1723,17 @@ Keyboard button actions run COMMAND immediately."
                 (perinf-i18n 'details.status)
                 (perinf-i18n 'audio.status.available)))
            (insert (perinf-i18n 'audio.none) "   ")
+           (when (eq system-type 'darwin)
+             (perinf-core--insert-button
+              "Optag lyd…"
+              (lambda (button)
+                (perinf-core--call-function-from-button
+                 #'perinf-recording-start
+                 (button-get button 'perinf-meeting-id)
+                 (button-get button 'perinf-project)))
+              'perinf-meeting-id (perinf-object-id object)
+              'perinf-project perinf-current-project)
+             (insert "   "))
            (perinf-core--insert-button
             (perinf-i18n 'audio.attach)
             (lambda (button)
@@ -1712,10 +1870,12 @@ Keyboard button actions run COMMAND immediately."
                    (insert "   "))
                  (insert "\n")))
            (insert (perinf-i18n 'details.none) "\n"))
+         (insert "\n")
+         (perinf-core--insert-agenda-files (perinf-object-id object))
          (insert "\n"
                  (propertize (perinf-i18n 'agenda.items) 'face 'bold)
                  "\n")
-         (if agenda-items
+         (when agenda-items
              (dolist (item agenda-items)
                (let ((item-documents
                       (seq-filter
@@ -1742,8 +1902,7 @@ Keyboard button actions run COMMAND immediately."
                   'perinf-agenda-item-id (perinf-object-id item))
                  (insert "\n")
                  (dolist (document item-documents)
-                   (insert "    • " (perinf-object-title document) "\n"))))
-           (insert (perinf-i18n 'details.none) "\n"))
+                   (insert "    • " (perinf-object-title document) "\n")))))
          (insert "\n"
                  (propertize (perinf-i18n 'document.meeting-title)
                              'face 'bold)
@@ -2071,6 +2230,7 @@ Keyboard button actions run COMMAND immediately."
                     (perinf-i18n 'home.version)
                     perinf-version))
     (perinf-core--insert-navigation)
+    (perinf-core--insert-clocks)
     (condition-case error-data
         (pcase perinf-current-view
           ('home (perinf-core--render-home))
@@ -2123,7 +2283,8 @@ With PROJECT-DIRECTORY, display metadata from that PerInf project."
   (perinf-core--load-state)
   (let ((candidate (or project-directory
                        perinf-current-project
-                       perinf-last-project-directory)))
+                       perinf-last-project-directory
+                       perinf-default-project-directory)))
     (when candidate
       (if (perinf-project-p candidate)
           (perinf-core--activate-project candidate)
@@ -2131,7 +2292,8 @@ With PROJECT-DIRECTORY, display metadata from that PerInf project."
           (perinf-i18n-user-error "Not a Personal Work and Information System project: %s" candidate)))))
   (let ((buffer (perinf-core--buffer)))
     (with-current-buffer buffer
-      (perinf-mode)
+      (unless (derived-mode-p 'perinf-mode)
+        (perinf-mode))
       (setq perinf-current-view 'home)
       (perinf-core--render))
     (pop-to-buffer buffer)))
@@ -2224,7 +2386,7 @@ Use DATE-FORMAT and TIME-FORMAT for regional input and display."
    (let* ((directory
            (read-directory-name
             (perinf-i18n 'project.create-directory-prompt)
-            (expand-file-name "Personal Work and Information System" (or (getenv "HOME") default-directory))
+            perinf-default-project-directory
             nil nil))
           (title (read-string (perinf-i18n 'project.title-prompt)))
           (language
@@ -2262,7 +2424,7 @@ Use DATE-FORMAT and TIME-FORMAT for regional input and display."
    (list
     (read-directory-name
      (perinf-i18n 'project.open-directory-prompt)
-     (or perinf-last-project-directory default-directory)
+     (or perinf-last-project-directory perinf-default-project-directory)
      nil t)))
   (perinf-i18n-load-locales)
   (perinf-core--activate-project directory)

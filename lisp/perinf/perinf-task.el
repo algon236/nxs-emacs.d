@@ -194,27 +194,42 @@ Each timer is stopped exactly at its last recorded activity plus
                         perinf-task-inactivity-check-interval
                         #'perinf-task--run-inactivity-check)))
 
+(defun perinf-task--read-buffer-or-file ()
+  "Read an open buffer name or an existing file path with completion."
+  (let* ((buffers (mapcar #'buffer-name
+                         (seq-filter #'perinf-task--trackable-buffer-p
+                                     (buffer-list))))
+         (choice (completing-read
+                  (perinf-i18n 'task.activity-buffer-prompt)
+                  (completion-table-merge
+                   buffers #'completion-file-name-table)
+                  nil nil)))
+    (or (get-buffer choice) (expand-file-name choice))))
+
 (defun perinf-task-associate-buffer (task-id &optional buffer)
-  "Associate BUFFER with active TASK-ID and save its stable identification."
+  "Associate BUFFER or a selected existing file with active TASK-ID.
+Files need not be open in Emacs.  Only Emacs buffers record activity."
   (interactive (list (perinf-task--select-active-task) (current-buffer)))
   (unless (and (boundp 'perinf-current-project) perinf-current-project)
     (user-error "%s" (perinf-i18n 'home.no-project)))
-  (let ((target (or buffer
-                    (get-buffer
-                     (read-buffer (perinf-i18n 'task.activity-buffer-prompt)
-                                  nil t)))))
-    (unless (buffer-live-p target)
+  (let* ((target (or buffer (perinf-task--read-buffer-or-file)))
+         (file (and (stringp target) (expand-file-name target)))
+         (target-buffer (if file (find-buffer-visiting file) target)))
+    (unless (if file (file-regular-p file) (buffer-live-p target-buffer))
       (user-error "%s" (perinf-i18n 'task.activity-buffer-missing)))
-    (unless (perinf-task--trackable-buffer-p target)
+    (when (and target-buffer
+               (not (perinf-task--trackable-buffer-p target-buffer)))
       (user-error "%s" (perinf-i18n 'task.activity-buffer-untrackable)))
-    (let ((resource (perinf-task--activity-resource target)))
+    (let ((resource (if file (cons 'file file)
+                      (perinf-task--activity-resource target-buffer))))
       (perinf-storage-set-task-activity-resource
        task-id (car resource) (cdr resource) t perinf-current-project)
-      (with-current-buffer target
-        (setq-local perinf-task-activity-task-id task-id
-                    perinf-task-activity-project perinf-current-project
-                    perinf-task-activity-last-write nil)
-        (perinf-task-record-buffer-activity))
+      (when target-buffer
+        (with-current-buffer target-buffer
+          (setq-local perinf-task-activity-task-id task-id
+                      perinf-task-activity-project perinf-current-project
+                      perinf-task-activity-last-write nil)
+          (perinf-task-record-buffer-activity)))
       (message "%s" (perinf-i18n 'task.activity-buffer-associated)))))
 
 (defun perinf-task-dissociate-current-buffer ()

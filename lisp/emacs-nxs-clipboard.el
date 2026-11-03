@@ -25,15 +25,20 @@
    ((eq system-type 'darwin)
     (setq interprogram-cut-function
           (lambda (text &optional _)
-            (let ((process-connection-type nil))
-              (let ((proc (start-process "pbcopy" "*Messages*" "pbcopy")))
-                (process-send-string proc text)
-                (process-send-eof proc)))))
+            (if (display-graphic-p)
+                (gui-select-text text)
+              (let ((process-connection-type nil))
+                (let ((proc (start-process "pbcopy" nil "/usr/bin/pbcopy")))
+                  (set-process-query-on-exit-flag proc nil)
+                  (process-send-string proc text)
+                  (process-send-eof proc))))))
     (setq interprogram-paste-function
           (lambda ()
-            (with-temp-buffer
-              (call-process "/usr/bin/pbpaste" nil t nil)
-              (buffer-string)))))
+            (if (display-graphic-p)
+                (gui-selection-value)
+              (with-temp-buffer
+                (call-process "/usr/bin/pbpaste" nil t nil)
+                (buffer-string))))))
 
    ;; WSL (Windows Subsystem for Linux): Use clip.exe for copy and powershell.exe for paste
    ((and (eq system-type 'gnu/linux)

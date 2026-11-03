@@ -276,6 +276,20 @@
         (perinf-core-meetings)))))
 
 ;;;###autoload
+(defun perinf-meeting-load-agenda (&optional meeting-id)
+  "Copy an agenda file into the current project for MEETING-ID."
+  (interactive)
+  (unless (and (boundp 'perinf-current-project) perinf-current-project)
+    (user-error "%s" (perinf-i18n 'home.no-project)))
+  (let ((selected-meeting (or meeting-id (perinf-meeting--select-meeting)))
+        (source-file (read-file-name (perinf-i18n 'agenda.file-prompt) nil nil t)))
+    (perinf-storage-attach-document
+     selected-meeting nil source-file perinf-current-project "agenda")
+    (when (fboundp 'perinf-core-meetings)
+      (perinf-core-meetings))
+    (message "%s" (perinf-i18n 'agenda.file-loaded))))
+
+;;;###autoload
 (defun perinf-meeting-attach-document (meeting-id &optional agenda-item-id)
   "Attach a document to MEETING-ID or optional AGENDA-ITEM-ID."
   (interactive (list (perinf-meeting--select-meeting) nil))
@@ -495,6 +509,44 @@
     (if meeting
         (perinf-core-show-object meeting)
       (perinf-core-meetings))))
+
+(defun perinf-meeting-duration-seconds (meeting)
+  "Return corrected duration of MEETING, or its scheduled duration."
+  (let* ((props (perinf-object-properties meeting))
+         (override (alist-get 'MEETING_DURATION_SECONDS props))
+         (start (alist-get 'START_AT props))
+         (finish (alist-get 'FINISH_AT props)))
+    (cond (override (string-to-number override))
+          ((and start finish (> (length start) 10) (> (length finish) 10))
+           (max 0 (truncate (float-time
+                             (time-subtract (date-to-time finish) (date-to-time start))))))
+          (t 0))))
+
+(defun perinf-meeting-extra-seconds (meeting &optional now)
+  "Return accumulated extra time for MEETING, including running time at NOW."
+  (let* ((props (perinf-object-properties meeting))
+         (started (alist-get 'MEETING_TIMER_STARTED_AT props)))
+    (+ (string-to-number (or (alist-get 'MEETING_EXTRA_SECONDS props) "0"))
+       (if started
+           (max 0 (truncate (float-time
+                             (time-subtract (or now (current-time)) (date-to-time started)))))
+         0))))
+
+(defun perinf-meeting-change-time (id action &optional value)
+  "Apply time ACTION and VALUE to meeting ID and refresh its details."
+  (let ((meeting (perinf-storage-set-meeting-time
+                  id action value perinf-current-project)))
+    (when (fboundp 'perinf-core-show-object)
+      (perinf-core-show-object meeting))
+    (message "%s" (perinf-i18n 'meeting.time-saved))))
+
+(defun perinf-meeting-edit-duration (id)
+  "Prompt for the actual duration of meeting ID in minutes."
+  (let* ((meeting (perinf-storage--meeting-by-id id perinf-current-project))
+         (minutes (read-number (perinf-i18n 'meeting.duration-prompt)
+                               (/ (perinf-meeting-duration-seconds meeting) 60.0))))
+    (unless (>= minutes 0) (user-error "%s" (perinf-i18n 'meeting.duration-invalid)))
+    (perinf-meeting-change-time id 'duration (round (* minutes 60)))))
 
 (provide 'perinf-meeting)
 

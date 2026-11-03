@@ -36,3 +36,9 @@ projectile-bookmarks.eld
 # Yderligere lokale filer
 games/
 README.org
+
+# Local runtime state, grammars, generated autoloads and dated backups
+/perinf/
+/tree-sitter/
+/lisp/perinf/perinf-autoloads.el
+*.bak-*

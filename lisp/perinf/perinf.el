@@ -5,7 +5,7 @@
 
 ;; Author: Niels Søndergaard <niels@algon.dk>
 ;; Assisted-by: Codex:GPT-6
-;; Version: 1.0.1
+;; Version: 1.0.2
 ;; Package-Requires: ((emacs "29.1") (org "9.6"))
 ;; Keywords: outlines, calendar, convenience
 ;; URL: https://github.com/algon236/perinf

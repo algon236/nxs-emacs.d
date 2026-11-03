@@ -3,7 +3,7 @@
 
 My personal Emacs configuration.
 
-The configuration is intended for Emacs 31 or later and consists of
+The configuration is intended for Emacs 32.0.50 or later and consists of
 `early-init.el`, `init.el`, and smaller modules in `lisp/`.
 
 This configuration is only tried on Apple iMac (M1) and Apple MacBook Air (M2).
@@ -23,6 +23,24 @@ emacs --init-directory ~/.config/nxs.emacs.d
 Personal information and local data belong in `var/private.el`, which is not
 version-controlled. Installed packages, cache files, history, and other
 generated files are likewise excluded.
+
+## Verification and recent changes
+
+The configuration was restarted and checked on macOS on 3 November 2026.
+See [the verification notes](docs/verification-2026-11-03.md) for the scope,
+measurements and remaining warnings. PerInf clock displays now refresh every
+10 seconds and skip hidden windows. Project labels share a short-lived cache,
+and graphical macOS frames use the native clipboard.
+
+Run the focused regression checks from the repository root:
+
+```sh
+emacs --batch -Q -l tests/performance-tests.el
+```
+
+The repository also includes the current PerInf meeting-time, recording and
+statistics functionality and sleep report version 21. User data and generated
+runtime files remain outside version control.
 
 ## Background and attribution
 

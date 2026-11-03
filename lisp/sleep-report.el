@@ -6,7 +6,7 @@
 (require 'calendar)
 (require 'subr-x)
 
-(defconst emacs-nxs-sleep-report-version 18
+(defconst emacs-nxs-sleep-report-version 21
   "Projektets heltalsversion.")
 
 (defgroup emacs-nxs-sleep-report nil
@@ -258,6 +258,14 @@ morgen, middag og aften."
          " \\\\")))
     (emacs-nxs-sleep-report--blood-pressure-report-rows rows)
     "\n")
+   "\n\\SetHline[=]{-}{1pt}\n"
+   (mapconcat
+    (lambda (row)
+      (concat (mapconcat #'emacs-nxs-sleep-report--latex-escape row " & ")
+              " & \\\\"))
+    (emacs-nxs-sleep-report--measurement-summaries
+     (emacs-nxs-sleep-report--blood-pressure-report-rows rows) 6 9)
+    "\n")
    "\n"))
 
 (defun emacs-nxs-sleep-report--write (file content)
@@ -408,6 +416,39 @@ KIND begrænser plottet til sys eller dia. Ingen faste blodtryksgrænser."
      "Spredningen gælder de medtagne målinger og er ikke apparatets måleusikkerhed.\\par\n"
      "Grafernes y-skalaer tilpasses hver for sig.}\\par\n")))
 
+(defun emacs-nxs-sleep-report--measurement-summaries (rows &optional columns time-start)
+  "Returnér gennemsnit og stikprøvens standardafvigelse for daglige ROWS.
+Tomme felter udelades kolonnevis. Tider beregnes i timer og vises H:MM.
+Standardafvigelsen er udefineret ved færre end to målinger."
+  (let ((means (list "Gennemsnit"))
+        (deviations (list "Standardafvigelse")))
+    (cl-loop for column from 1 to (or columns 8) do
+             (let* ((timep (>= column (or time-start 6)))
+                    (values (delq nil
+                                  (mapcar
+                                   (lambda (row)
+                                     (funcall (if timep
+                                                  #'emacs-nxs-sleep-report--time-number
+                                                #'emacs-nxs-sleep-report--number)
+                                              (nth column row)))
+                                   rows)))
+                    (n (length values))
+                    (mean (when (> n 0) (/ (apply #'+ values) (float n))))
+                    (sd (when (> n 1)
+                          (sqrt (/ (cl-loop for value in values
+                                            sum (expt (- value mean) 2))
+                                   (1- n)))))
+                    (formatter
+                     (lambda (value)
+                       (cond ((null value) "---")
+                             (timep
+                              (let ((minutes (round (* value 60))))
+                                (format "%d:%02d" (/ minutes 60) (% minutes 60))))
+                             (t (replace-regexp-in-string "\\." "," (format "%.1f" value)))))))
+               (push (funcall formatter mean) means)
+               (push (funcall formatter sd) deviations)))
+    (list (nreverse means) (nreverse deviations))))
+
 (defun emacs-nxs-sleep-report--generate
     (directory table-name rows medicine-rows blood-pressure-rows)
   (let* ((out (expand-file-name emacs-nxs-sleep-report-output-directory directory))
@@ -428,11 +469,12 @@ KIND begrænser plottet til sys eller dia. Ingen faste blodtryksgrænser."
       (mapconcat
        (lambda (row)
          (concat
+          (when (equal (car row) "Gennemsnit") "\\SetHline[=]{-}{1pt}\n")
           (mapconcat #'emacs-nxs-sleep-report--latex-escape
                      (cl-subseq (append row (make-list 9 "")) 0 9)
                      " & ")
           " \\\\"))
-       usable "\n")
+       (append usable (emacs-nxs-sleep-report--measurement-summaries usable)) "\n")
       "\n"))
 
     (emacs-nxs-sleep-report--write
@@ -519,7 +561,10 @@ KIND begrænser plottet til sys eller dia. Ingen faste blodtryksgrænser."
          (default-directory directory)
          (buffer (get-buffer-create "*sleep-report-lualatex*")))
     (with-current-buffer buffer (erase-buffer))
-    (dotimes (_ 2)
+    (dotimes (pass 2)
+      (with-current-buffer buffer
+        (goto-char (point-max))
+        (insert (format "\nLuaLaTeX: gennemløb %d af 2\n" (1+ pass))))
       (unless (zerop
                (call-process "lualatex" nil buffer t
                              "-interaction=nonstopmode"
@@ -528,10 +573,31 @@ KIND begrænser plottet til sys eller dia. Ingen faste blodtryksgrænser."
                              (file-name-nondirectory tex)))
         (display-buffer buffer)
         (user-error "LuaLaTeX gav en fejl; se *sleep-report-lualatex*")))
-    (when (and emacs-nxs-sleep-report-open-pdf (file-exists-p pdf))
+    (unless (file-exists-p pdf)
+      (user-error "LuaLaTeX afsluttede uden at oprette PDF-filen"))
+    (when-let* ((pdf-buffer (find-buffer-visiting pdf)))
+      (with-current-buffer pdf-buffer
+        (unless (buffer-modified-p) (revert-buffer t t))))
+    (when emacs-nxs-sleep-report-open-pdf
       (find-file-other-window pdf))
     (message "Søvnrapport version %d er opdateret"
              emacs-nxs-sleep-report-version)))
+
+(defun emacs-nxs-sleep-report--refresh-tables ()
+  "Genberegn de tre rapporttabeller fra den aktuelle buffer."
+  (let ((names (list (car (emacs-nxs-sleep-report--find-table))
+                     "Status-Medicin" "Blodtryk")))
+    ;; Kontrollér alle kilder, før beregninger ændrer bufferen.
+    (mapc #'emacs-nxs-sleep-report--find-named-table names)
+    (save-excursion
+      (dolist (name names)
+        (goto-char (point-min))
+        (re-search-forward
+         (format "^[ \t]*#\\+NAME:[ \t]*%s[ \t]*$" (regexp-quote name)))
+        (forward-line 1)
+        (while (looking-at-p "^[ \t]*$") (forward-line 1))
+        (org-table-recalculate t)
+        (org-table-align)))))
 
 ;;;###autoload
 (defun emacs-nxs-sleep-report-update ()
@@ -541,7 +607,10 @@ KIND begrænser plottet til sys eller dia. Ingen faste blodtryksgrænser."
     (user-error "Kommandoen skal køres fra Org-filen"))
   (unless buffer-file-name
     (user-error "Gem Org-filen først"))
-  (save-buffer)
+  (save-restriction
+    (widen)
+    (emacs-nxs-sleep-report--refresh-tables)
+    (save-buffer)
   (pcase-let* ((`(,name ,_header ,rows)
                 (emacs-nxs-sleep-report--find-table))
                (medicine-rows
@@ -553,7 +622,7 @@ KIND begrænser plottet til sys eller dia. Ingen faste blodtryksgrænser."
                (directory (file-name-directory buffer-file-name)))
     (emacs-nxs-sleep-report--generate
      directory name rows medicine-rows blood-pressure-rows)
-    (emacs-nxs-sleep-report--compile directory)))
+    (emacs-nxs-sleep-report--compile directory))))
 
 (with-eval-after-load 'org
   (define-key org-mode-map (kbd "<f8>")

@@ -13,6 +13,34 @@
 
 ;;; Code:
 
+(require 'project)
+(require 'subr-x)
+
+(defvar-local emacs-nxs/project-display-cache nil
+  "Cached (DIRECTORY CHECKED-AT FORMATTED-PROJECT) for redisplay.
+Cache missing projects and file errors too, so redisplay does not retry
+an inaccessible directory on every keystroke.")
+
+(defun emacs-nxs/project-display ()
+  "Return the local project label, refreshed at most every five seconds."
+  (let ((now (float-time)))
+    (unless (and emacs-nxs/project-display-cache
+                 (equal default-directory (nth 0 emacs-nxs/project-display-cache))
+                 (< (- now (nth 1 emacs-nxs/project-display-cache)) 5))
+      (setq emacs-nxs/project-display-cache
+            (list default-directory now
+                  (unless (file-remote-p default-directory)
+                    (condition-case nil
+                        (project-mode-line-format)
+                      (file-error nil))))))
+    (nth 2 emacs-nxs/project-display-cache)))
+
+(defun emacs-nxs/frame-title ()
+  "Build the frame title using the same project cache as the mode line."
+  (if-let* ((label (emacs-nxs/project-display)))
+      (concat "Emacs - [p] " (string-trim (substring-no-properties label)))
+    (concat "Emacs - " (buffer-name))))
+
 (use-package emacs-nxs-mode-line
   :ensure nil
   :no-require t
@@ -47,7 +75,7 @@ Replacing `Git-' with a branch symbol."
                   mode-line-position
                   mode-line-format-right-align
                   "  "
-                  (project-mode-line project-mode-line-format)
+                  (project-mode-line (:eval (emacs-nxs/project-display)))
                   "  "
                   (vc-mode (:eval (emacs-nxs/shorten-vc-mode vc-mode)))
                   "  "

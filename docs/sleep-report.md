@@ -1,4 +1,4 @@
-# Søvnrapport, version 18
+# Søvnrapport, version 21
 
 Blodtryk vises i to grafer på samme side: sys og dia, hver med morgen,
 middag og aften. Alle numeriske målepunkter forbindes, også punkter markeret
@@ -37,3 +37,15 @@ Version 18 bruger tabularray med mørkegrønt tabelhoved, grønne rækker og
 gitter som rapportens øvrige tabeller. Skabelonen skal indlæse tabularray og
 xcolor med svgnames. I Medicin Status er købsdatokolonnen udvidet ved at
 reducere pladsen i præparat- og antal-kolonnerne.
+
+Version 19: F8 genberegner og justerer rapportens tre kildetabeller
+(søvntabellen, Status-Medicin og Blodtryk), gemmer Org-filen og genererer
+alle rapportfragmenter. Andre hjælpetabeller genberegnes ikke automatisk.
+LuaLaTeX køres to gange med tydelig logning af hvert gennemløb; fejl stopper
+forløbet. En allerede åben, uændret PDF-buffer genindlæses efter kompilering.
+
+Version 21 tilføjer gennemsnit og stikprøvens standardafvigelse som
+opsummeringsrækker i søvn- og blodtrykstabellerne. Tomme målinger udelades
+kolonnevis; standardafvigelsen vises som `---`, når der er færre end to
+målinger. Varigheder vises som H:MM. Opsummeringen adskilles med en vandret
+linje fra de daglige målinger.

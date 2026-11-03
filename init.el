@@ -296,6 +296,10 @@ for ESLint."
   "~/.emacs.d/var/templates/roam.org")
 ;;; ├──────────────────── Apple MacOS
 ;;
+
+;;
+(setq whitespace-global-modes '(not image-mode))
+
 (defvar sys/mac-x-p nil
   "Non-nil when Emacs runs graphically on macOS.")
 (defvar macOS nil
@@ -864,7 +868,7 @@ or is an ERC buffer."
   (defvar emacs-nxs/start-perinf-max-items 20
     "Maximum number of PerInf entries shown on the start page.")
   (defcustom emacs-nxs/start-perinf-project-directory
-    (expand-file-name "~/org/PerInf/")
+    (expand-file-name "~/org/agenda/")
     "Personal Work and Information System project shown on the start page."
     :type 'directory
     :group 'emacs)
@@ -1026,6 +1030,7 @@ Tasks without a deadline are placed after dated objects."
            (rss-kb (or (alist-get 'rss attributes) 0))
            (cpu-seconds
             (float-time (or (alist-get 'time attributes) '(0 0 0 0))))
+           (cpu-tenths (round (* cpu-seconds 10)))
            (visible-buffers (emacs-nxs/start--visible-buffer-count))
            (total-buffers (length (buffer-list)))
            (now (current-time))
@@ -1045,7 +1050,10 @@ Tasks without a deadline are placed after dated objects."
               ("⚙" "Emacs PID" ,(format "%s" (emacs-pid))
                "Oppetid" ,(emacs-uptime))
               ("💾" "Hukommelse" ,(format "%.1f MB" (/ rss-kb 1024.0))
-               "CPU Time" ,(format "%.1f s" cpu-seconds))
+               "CPU Tid" ,(format "%02d:%02d:%04.1f"
+                                  (/ cpu-tenths 36000)
+                                  (% (/ cpu-tenths 600) 60)
+                                  (/ (% cpu-tenths 600) 10.0)))
               ("📦" "Pakker" ,(format "%s" (length package-activated-list))
                "Buffere" ,(format "%s/%s total" visible-buffers total-buffers))))
            (icon-width (apply #'max (mapcar (lambda (row) (string-width (nth 0 row))) rows)))
@@ -1686,6 +1694,11 @@ Ex: mpv file1 file2 file3 file4..."
        ;; A better "BACK" keybiding
        (define-key dired-mode-map (kbd "b") 'dired-up-directory))))
 
+;;; fast display
+(with-eval-after-load 'dired
+  (keymap-set dired-mode-map "SPC" #'dired-display-file))
+(with-eval-after-load 'ibuffer
+  (keymap-set ibuffer-mode-map "SPC" #'ibuffer-visit-buffer-other-window-noselect))
 
 ;;; │ WDIRED
 (use-package wdired
@@ -3971,6 +3984,7 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
 ;;  │ Each file is loaded here via `require'.
 ;;  │ See `lisp/*.el' for per-module documentation.
 (add-to-list 'load-path (expand-file-name "lisp/" user-emacs-directory))
+(require 'emacs-nxs-icloud-trash)
 (add-to-list 'load-path (expand-file-name "lisp/perinf/" user-emacs-directory))
 (setq perinf-interface-language 'da
       perinf-interface-language-override 'da)
@@ -4082,12 +4096,29 @@ As seen on: https://www.reddit.com/r/emacs/comments/1kfblch/need_help_with_addin
              (if (= matches 1) "" "s"))))
 
 ;; -----------------------------------------------------------------------------
-;; Emacs 31 testing packages
+;; Emacs 32 card-games
 ;; -----------------------------------------------------------------------------
 (use-package card-games
   :commands (card-games card-games-klondike card-games-bid card-games-hearts card-games-gin card-games-crapette))
-(use-package org-draw
-  :ensure t
-  :commands (org-draw org-draw-edit org-draw-setup))
+
+;; -----------------------------------------------------------------------------
+;; Emacs 31 testing packages
+;; -----------------------------------------------------------------------------
+
+(use-package flick
+  ;; NOTE: vc is only built into use-package in Emacs 30+; if you
+  ;; have an older version, you will have to use a different method.
+  :vc (:url "https://gitlab.com/vegasharmon/flick" :rev :newest)
+  :bind (("C-c f" . flick-choose-font)
+         ("C-c F" . flick-choose-variable-pitch-font)))
+
+(setopt flick-roles
+        '((monospace      :faces (default fixed-pitch) :monospace nil)
+          (variable-pitch :faces (variable-pitch))
+          (serif          :faces (fixed-pitch-serif))
+          (mode-line      :faces (mode-line mode-line-inactive))))
+
+
+
 (provide 'init)
 ;;; init.el ends here
